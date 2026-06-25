@@ -1,5 +1,10 @@
 const express = require("express");
 
+const healthRoutes = require("./routes/health");
+const merchantRoutes = require("./routes/merchant");
+const traderRoutes = require("./routes/trader");
+const adminRoutes = require("./routes/admin");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -14,14 +19,10 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/health", (req, res) => {
-  res.json({
-    success: true,
-    status: "ok",
-    service: "payhub-backend",
-    timestamp: new Date().toISOString()
-  });
-});
+app.use("/health", healthRoutes);
+app.use("/api/merchant", merchantRoutes);
+app.use("/api/trader", traderRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.listen(PORT, () => {
   console.log(`PayHub server running on port ${PORT}`);

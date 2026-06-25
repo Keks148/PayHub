@@ -2,10 +2,11 @@
 
 This folder contains the backend part of PayHub.
 
-## Current files
-
-- `package.json` — Node.js project config
-- `server.js` — first basic PayHub server
+## Current modules
+- health
+- merchant
+- trader
+- admin
 
 ## Goal
 Build PayHub API for:
