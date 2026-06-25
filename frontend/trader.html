@@ -1,1 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PayHub Trader</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#060b16;color:#fff;font-family:Arial,sans-serif}
+    .wrap{padding:18px 16px 40px;max-width:900px;margin:0 auto}
+    h1{font-size:30px;margin:0 0 18px}
+    .btn{border:0;border-radius:16px;padding:15px 18px;font-size:16px;font-weight:800;color:#fff;background:#2563eb;cursor:pointer}
+    .btn.green{background:#15803d}
+    .btn.red{background:#b42318}
+    .btn.gray{background:#2b3242}
+    .top{display:grid;gap:12px;margin-bottom:18px}
+    .card{background:#121826;border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:18px;margin-bottom:16px}
+    .title{font-size:24px;font-weight:900;margin-bottom:14px}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+    .row:last-child{border-bottom:0}
+    .key{color:#aab2c5;font-size:17px}
+    .val{font-size:17px;font-weight:800;text-align:right;word-break:break-word}
+    .badge{padding:8px 12px;border-radius:999px;font-size:14px;font-weight:900}
+    .waiting{background:rgba(217,119,6,.25);color:#ffd166}
+    .paid{background:rgba(22,163,74,.25);color:#7ef29b}
+    .rejected{background:rgba(220,38,38,.22);color:#ff8d8d}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .empty{color:#aab2c5;font-size:18px}
+    pre{white-space:pre-wrap;word-break:break-word;background:#040814;border-radius:18px;padding:16px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PayHub Trader</h1>
 
+    <div class="top">
+      <button class="btn" onclick="loadAll()">Обновить</button>
+    </div>
+
+    <div class="card">
+      <div class="title">Мой профиль</div>
+      <div id="profileBox" class="empty">Загрузка...</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Мои заявки</div>
+      <div id="ordersBox" class="empty">Загрузка...</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Мои карты</div>
+      <div id="cardsBox" class="empty">Загрузка...</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Ответ API</div>
+      <pre id="apiOutput">...</pre>
+    </div>
+  </div>
+
+<script>
+const API = "https://payhub-backend-kn3h.onrender.com";
+
+function traderId(){
+  const p = new URLSearchParams(location.search);
+  return p.get("trader_id") || "trader_1";
+}
+
+function out(data){
+  document.getElementById("apiOutput").textContent = JSON.stringify(data, null, 2);
+}
+
+async function get(path){
+  const r = await fetch(API + path);
+  return await r.json();
+}
+
+async function patch(path){
+  const r = await fetch(API + path, { method:"PATCH", headers:{ "Content-Type":"application/json" } });
+  return await r.json();
+}
+
+function statusBadge(s){
+  s = String(s || "").toLowerCase();
+  if(s === "paid") return '<span class="badge paid">PAID</span>';
+  if(s === "rejected") return '<span class="badge rejected">REJECTED</span>';
+  return '<span class="badge waiting">WAITING</span>';
+}
+
+async function loadProfile(){
+  const data = await get("/api/admin/traders");
+  const id = traderId();
+  const trader = (data.traders || []).find(t => t.id === id);
+  const box = document.getElementById("profileBox");
+
+  if(!trader){
+    box.innerHTML = "Трейдер не найден: " + id;
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="row"><div class="key">ID</div><div class="val">${trader.id}</div></div>
+    <div class="row"><div class="key">Имя</div><div class="val">${trader.name}</div></div>
+    <div class="row"><div class="key">Статус</div><div class="val">${trader.status}</div></div>
+    <div class="row"><div class="key">Процент</div><div class="val">${trader.percent}%</div></div>
+    <div class="row"><div class="key">USDT</div><div class="val">${trader.available_usdt}</div></div>
+    <div class="row"><div class="key">Резерв</div><div class="val">${trader.reserved_usdt || 0}</div></div>
+  `;
+}
+
+async function loadOrders(){
+  const data = await get("/api/admin/orders");
+  out(data);
+
+  const id = traderId();
+  const orders = (data.orders || []).filter(o => o.trader_id === id);
+  const box = document.getElementById("ordersBox");
+
+  if(!orders.length){
+    box.innerHTML = '<div class="empty">Заявок пока нет</div>';
+    return;
+  }
+
+  box.innerHTML = orders.map(o => {
+    const can = o.status === "waiting";
+    return `
+      <div class="card">
+        <div class="row"><div class="key">Order</div><div class="val">${o.id}</div></div>
+        <div class="row"><div class="key">Сумма</div><div class="val">${o.amount_uah} UAH</div></div>
+        <div class="row"><div class="key">Статус</div><div class="val">${statusBadge(o.status)}</div></div>
+        <div class="row"><div class="key">Банк</div><div class="val">${o.bank}</div></div>
+        <div class="row"><div class="key">Карта</div><div class="val">${o.card_number}</div></div>
+        <div class="row"><div class="key">Профит</div><div class="val">${o.trader_profit_uah} UAH</div></div>
+        ${can ? `
+          <div class="actions">
+            <button class="btn green" onclick="confirmOrder('${o.id}')">Подтвердить</button>
+            <button class="btn red" onclick="rejectOrder('${o.id}')">Отклонить</button>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+async function loadCards(){
+  const data = await get("/api/admin/cards");
+  const id = traderId();
+  const cards = (data.cards || []).filter(c => c.trader_id === id);
+  const box = document.getElementById("cardsBox");
+
+  if(!cards.length){
+    box.innerHTML = '<div class="empty">Карт пока нет</div>';
+    return;
+  }
+
+  box.innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="row"><div class="key">ID</div><div class="val">${c.id}</div></div>
+      <div class="row"><div class="key">Банк</div><div class="val">${c.bank}</div></div>
+      <div class="row"><div class="key">Карта</div><div class="val">${c.card_number}</div></div>
+      <div class="row"><div class="key">Владелец</div><div class="val">${c.card_holder}</div></div>
+      <div class="row"><div class="key">Мин/Макс</div><div class="val">${c.min_amount}-${c.max_amount}</div></div>
+      <div class="row"><div class="key">Оборот сегодня</div><div class="val">${c.turnover_today || 0}</div></div>
+      <div class="row"><div class="key">Активна</div><div class="val">${c.active ? "Да" : "Нет"}</div></div>
+      <div class="row"><div class="key">Занята</div><div class="val">${c.reserved ? "Да" : "Нет"}</div></div>
+    </div>
+  `).join("");
+}
+
+async function confirmOrder(id){
+  if(!confirm("Подтвердить оплату " + id + "?")) return;
+  const data = await patch("/api/admin/orders/" + id + "/paid");
+  out(data);
+  await loadAll();
+}
+
+async function rejectOrder(id){
+  if(!confirm("Отклонить заявку " + id + "?")) return;
+  const data = await patch("/api/admin/orders/" + id + "/reject");
+  out(data);
+  await loadAll();
+}
+
+async function loadAll(){
+  await loadProfile();
+  await loadOrders();
+  await loadCards();
+}
+
+loadAll();
+</script>
+</body>
+</html>
