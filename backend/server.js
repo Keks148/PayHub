@@ -15,7 +15,8 @@ app.get("/", (req, res) => {
     success: true,
     message: "PayHub backend is running",
     project: "PayHub",
-    version: "1.0.0"
+    version: "1.0.0",
+    modules: ["health", "merchant", "trader", "admin"]
   });
 });
 
@@ -23,6 +24,14 @@ app.use("/health", healthRoutes);
 app.use("/api/merchant", merchantRoutes);
 app.use("/api/trader", traderRoutes);
 app.use("/api/admin", adminRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error_code: "NOT_FOUND",
+    message: "Route not found"
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`PayHub server running on port ${PORT}`);
