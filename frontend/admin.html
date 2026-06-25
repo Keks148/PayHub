@@ -7,111 +7,84 @@
   <style>
     body{margin:0;font-family:Arial,sans-serif;background:#0f1115;color:white;padding:16px}
     h1{font-size:34px;margin:0 0 18px}
-    h2{margin:0 0 12px}
+    h2{margin:0 0 14px}
+    button{border:0;border-radius:14px;background:#1f6feb;color:white;padding:14px 18px;font-size:16px;font-weight:800}
     .buttons{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
-    button{border:0;border-radius:12px;background:#1f6feb;color:white;padding:14px 18px;font-size:16px;font-weight:700}
     .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
-    .card{background:#171a21;border:1px solid #2a2f3a;border-radius:14px;padding:16px}
+    .stat,.section,.item{background:#171a21;border:1px solid #2a2f3a;border-radius:18px;padding:16px}
     .label{color:#9aa4b2;font-size:14px}
-    .value{font-size:28px;font-weight:800;margin-top:6px}
-    .section{background:#171a21;border:1px solid #2a2f3a;border-radius:14px;padding:16px;margin-bottom:18px}
-    table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid #2a2f3a;padding:10px;text-align:left;font-size:14px}
-    th{color:#9aa4b2}
-    .scroll{overflow-x:auto}
-    .badge{padding:5px 9px;border-radius:99px;font-size:12px;font-weight:700}
-    .paid{background:#143d24;color:#7ee787}
+    .value{font-size:30px;font-weight:900;margin-top:8px}
+    .section{margin-bottom:18px}
+    .list{display:grid;gap:12px}
+    .row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #2a2f3a;padding:8px 0}
+    .row:last-child{border-bottom:0}
+    .muted{color:#9aa4b2}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:900}
+    .paid,.on{background:#143d24;color:#7ee787}
     .wait{background:#3b2f14;color:#ffcc66}
-    .bad{background:#3a1616;color:#ff8b8b}
-    .on{background:#143d24;color:#7ee787}
-    .off{background:#3a1616;color:#ff8b8b}
-    pre{white-space:pre-wrap;word-break:break-word;background:#090b10;padding:12px;border-radius:10px}
-    @media(max-width:700px){.grid{grid-template-columns:1fr}h1{font-size:30px}button{font-size:15px}}
+    .bad,.off{background:#3a1616;color:#ff8b8b}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
   </style>
 </head>
 <body>
-  <h1>PayHub Admin Panel</h1>
+  <h1>PayHub Admin</h1>
 
   <div class="buttons">
-    <button onclick="loadAll()">Обновить всё</button>
-    <button onclick="loadOrders()">Ордера</button>
-    <button onclick="loadTraders()">Трейдеры</button>
-    <button onclick="loadCards()">Карты</button>
+    <button onclick="loadAll()">Обновить</button>
+    <button onclick="createTestOrder()">Тест заявка</button>
   </div>
 
   <div class="grid">
-    <div class="card"><div class="label">Всего ордеров</div><div class="value" id="total">0</div></div>
-    <div class="card"><div class="label">Ожидают</div><div class="value" id="waiting">0</div></div>
-    <div class="card"><div class="label">Оплачено</div><div class="value" id="paid">0</div></div>
-    <div class="card"><div class="label">Оборот UAH</div><div class="value" id="turnover">0</div></div>
-    <div class="card"><div class="label">Профит трейдеров</div><div class="value" id="profit">0</div></div>
-    <div class="card"><div class="label">Активные карты</div><div class="value" id="activeCards">0</div></div>
+    <div class="stat"><div class="label">Всего ордеров</div><div class="value" id="total">0</div></div>
+    <div class="stat"><div class="label">Ожидают</div><div class="value" id="waiting">0</div></div>
+    <div class="stat"><div class="label">Оплачено</div><div class="value" id="paid">0</div></div>
+    <div class="stat"><div class="label">Оборот UAH</div><div class="value" id="turnover">0</div></div>
+    <div class="stat"><div class="label">Профит трейдеров</div><div class="value" id="profit">0</div></div>
+    <div class="stat"><div class="label">Активные карты</div><div class="value" id="activeCards">0</div></div>
   </div>
 
   <div class="section">
     <h2>Ордера</h2>
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Order</th><th>Сумма</th><th>Статус</th><th>Трейдер</th><th>Карта</th>
-          </tr>
-        </thead>
-        <tbody id="orders"></tbody>
-      </table>
-    </div>
+    <div id="orders" class="list"></div>
   </div>
 
   <div class="section">
     <h2>Трейдеры</h2>
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th><th>Имя</th><th>Статус</th><th>%</th><th>USDT</th>
-          </tr>
-        </thead>
-        <tbody id="traders"></tbody>
-      </table>
-    </div>
+    <div id="traders" class="list"></div>
   </div>
 
   <div class="section">
     <h2>Карты</h2>
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th><th>Банк</th><th>Карта</th><th>Лимиты</th><th>Статус</th>
-          </tr>
-        </thead>
-        <tbody id="cards"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>Ответ API</h2>
-    <pre id="raw">Загрузка...</pre>
+    <div id="cards" class="list"></div>
   </div>
 
 <script>
-const API = "https://payhub-backend-kn3h.onrender.com/api/admin";
+const ADMIN_API = "https://payhub-backend-kn3h.onrender.com/api/admin";
+const MERCHANT_API = "https://payhub-backend-kn3h.onrender.com/api/merchant";
 
-async function get(path){
-  const res = await fetch(API + path);
+async function get(url){
+  const res = await fetch(url);
   return await res.json();
 }
 
-function badgeStatus(status){
+async function post(url, body){
+  const res = await fetch(url,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body || {})
+  });
+  return await res.json();
+}
+
+function statusBadge(status){
   if(status === "PAID") return '<span class="badge paid">PAID</span>';
   if(status === "WAITING_PAYMENT") return '<span class="badge wait">WAITING</span>';
+  if(status === "REJECTED") return '<span class="badge bad">REJECTED</span>';
   return '<span class="badge bad">' + (status || "-") + '</span>';
 }
 
 async function loadStats(){
-  const data = await get("/stats");
-  document.getElementById("raw").textContent = JSON.stringify(data, null, 2);
+  const data = await get(ADMIN_API + "/stats");
   const s = data.stats || {};
   document.getElementById("total").textContent = s.total_orders || 0;
   document.getElementById("waiting").textContent = s.waiting_orders || 0;
@@ -122,54 +95,73 @@ async function loadStats(){
 }
 
 async function loadOrders(){
-  const data = await get("/orders");
-  document.getElementById("raw").textContent = JSON.stringify(data, null, 2);
+  const data = await get(ADMIN_API + "/orders");
   const box = document.getElementById("orders");
   box.innerHTML = "";
-  (data.orders || []).forEach(o=>{
+
+  if(!data.orders || data.orders.length === 0){
+    box.innerHTML = '<div class="muted">Ордеров пока нет</div>';
+    return;
+  }
+
+  data.orders.forEach(o=>{
     box.innerHTML += `
-      <tr>
-        <td>${o.merchant_order_id || "-"}</td>
-        <td>${o.amount || 0} ${o.currency || "UAH"}</td>
-        <td>${badgeStatus(o.status)}</td>
-        <td>${o.assigned_trader_name || o.assigned_trader_id || "-"}</td>
-        <td>${o.bank || "-"}<br>${o.card_number || "-"}</td>
-      </tr>`;
+      <div class="item">
+        <div class="row"><span class="muted">Order</span><b>${o.merchant_order_id || "-"}</b></div>
+        <div class="row"><span class="muted">Сумма</span><b>${o.amount || 0} ${o.currency || "UAH"}</b></div>
+        <div class="row"><span class="muted">Статус</span>${statusBadge(o.status)}</div>
+        <div class="row"><span class="muted">Трейдер</span><b>${o.assigned_trader_name || o.assigned_trader_id || "-"}</b></div>
+        <div class="row"><span class="muted">Карта</span><b>${o.bank || "-"} ${o.card_number || ""}</b></div>
+        <div class="row"><span class="muted">Профит</span><b>${o.trader_profit_uah || 0} UAH</b></div>
+      </div>`;
   });
 }
 
 async function loadTraders(){
-  const data = await get("/traders");
-  document.getElementById("raw").textContent = JSON.stringify(data, null, 2);
+  const data = await get(ADMIN_API + "/traders");
   const box = document.getElementById("traders");
   box.innerHTML = "";
+
   (data.traders || []).forEach(t=>{
     box.innerHTML += `
-      <tr>
-        <td>${t.id}</td>
-        <td>${t.name}</td>
-        <td>${t.status}</td>
-        <td>${t.percent}</td>
-        <td>${t.available_usdt}</td>
-      </tr>`;
+      <div class="item">
+        <div class="row"><span class="muted">ID</span><b>${t.id}</b></div>
+        <div class="row"><span class="muted">Имя</span><b>${t.name}</b></div>
+        <div class="row"><span class="muted">Статус</span><b>${t.status}</b></div>
+        <div class="row"><span class="muted">Процент</span><b>${t.percent}%</b></div>
+        <div class="row"><span class="muted">USDT</span><b>${t.available_usdt}</b></div>
+      </div>`;
   });
 }
 
 async function loadCards(){
-  const data = await get("/cards");
-  document.getElementById("raw").textContent = JSON.stringify(data, null, 2);
+  const data = await get(ADMIN_API + "/cards");
   const box = document.getElementById("cards");
   box.innerHTML = "";
+
   (data.cards || []).forEach(c=>{
     box.innerHTML += `
-      <tr>
-        <td>${c.id}</td>
-        <td>${c.bank}</td>
-        <td>${c.card_number}<br>${c.card_holder}</td>
-        <td>${c.min_amount}-${c.max_amount}<br>день: ${c.daily_limit}</td>
-        <td>${c.active ? '<span class="badge on">ACTIVE</span>' : '<span class="badge off">OFF</span>'}</td>
-      </tr>`;
+      <div class="item">
+        <div class="row"><span class="muted">ID</span><b>${c.id}</b></div>
+        <div class="row"><span class="muted">Банк</span><b>${c.bank}</b></div>
+        <div class="row"><span class="muted">Карта</span><b>${c.card_number}</b></div>
+        <div class="row"><span class="muted">Владелец</span><b>${c.card_holder}</b></div>
+        <div class="row"><span class="muted">Мин/Макс</span><b>${c.min_amount}-${c.max_amount}</b></div>
+        <div class="row"><span class="muted">День</span><b>${c.daily_limit}</b></div>
+        <div class="row"><span class="muted">Статус</span>${c.active ? '<span class="badge on">ACTIVE</span>' : '<span class="badge off">OFF</span>'}</div>
+      </div>`;
   });
+}
+
+async function createTestOrder(){
+  const id = "ORDER_" + Date.now();
+  await post(MERCHANT_API + "/create-order", {
+    merchant_id:"merchant_demo",
+    order_id:id,
+    amount:4200,
+    currency:"UAH"
+  });
+  await loadAll();
 }
 
 async function loadAll(){
