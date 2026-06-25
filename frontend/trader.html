@@ -4,46 +4,246 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PayHub Trader</title>
+
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;background:#060b16;color:#fff;font-family:Arial,sans-serif}
-    .wrap{padding:18px 16px 40px;max-width:900px;margin:0 auto}
-    h1{font-size:30px;margin:0 0 18px}
-    .btn{border:0;border-radius:16px;padding:15px 18px;font-size:16px;font-weight:800;color:#fff;background:#2563eb;cursor:pointer}
-    .btn.green{background:#15803d}
-    .btn.red{background:#b42318}
-    .btn.gray{background:#2b3242}
-    .top{display:grid;gap:12px;margin-bottom:18px}
-    .card{background:#121826;border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:18px;margin-bottom:16px}
-    .title{font-size:24px;font-weight:900;margin-bottom:14px}
-    .row{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08)}
-    .row:last-child{border-bottom:0}
-    .key{color:#aab2c5;font-size:17px}
-    .val{font-size:17px;font-weight:800;text-align:right;word-break:break-word}
-    .badge{padding:8px 12px;border-radius:999px;font-size:14px;font-weight:900}
-    .waiting{background:rgba(217,119,6,.25);color:#ffd166}
-    .paid{background:rgba(22,163,74,.25);color:#7ef29b}
-    .rejected{background:rgba(220,38,38,.22);color:#ff8d8d}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .empty{color:#aab2c5;font-size:18px}
-    pre{white-space:pre-wrap;word-break:break-word;background:#040814;border-radius:18px;padding:16px}
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #060b16;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 18px 16px 40px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 30px;
+      font-weight: 900;
+    }
+
+    .top {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 16px;
+      padding: 15px 18px;
+      font-size: 16px;
+      font-weight: 900;
+      color: #fff;
+      background: #2563eb;
+      cursor: pointer;
+    }
+
+    .btn.green { background: #15803d; }
+    .btn.red { background: #b42318; }
+    .btn.gray { background: #2b3242; }
+    .btn.orange { background: #b66a00; }
+
+    .card {
+      background: #121826;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 900;
+      margin-bottom: 14px;
+    }
+
+    .small {
+      color: #aab2c5;
+      font-size: 14px;
+      margin-top: -6px;
+      margin-bottom: 12px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .stat .k {
+      color: #aab2c5;
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .stat .v {
+      font-size: 32px;
+      font-weight: 900;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      align-items: center;
+    }
+
+    .row:last-child { border-bottom: 0; }
+
+    .key {
+      color: #aab2c5;
+      font-size: 17px;
+      flex: 0 0 42%;
+    }
+
+    .val {
+      font-size: 17px;
+      font-weight: 900;
+      text-align: right;
+      word-break: break-word;
+      flex: 1;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 900;
+      min-width: 92px;
+      text-transform: uppercase;
+    }
+
+    .waiting {
+      background: rgba(217,119,6,.25);
+      color: #ffd166;
+    }
+
+    .paid {
+      background: rgba(22,163,74,.25);
+      color: #7ef29b;
+    }
+
+    .rejected,
+    .cancelled {
+      background: rgba(220,38,38,.22);
+      color: #ff8d8d;
+    }
+
+    .active,
+    .online {
+      background: rgba(22,163,74,.25);
+      color: #7ef29b;
+    }
+
+    .disabled,
+    .offline {
+      background: rgba(220,38,38,.22);
+      color: #ff8d8d;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .empty {
+      color: #aab2c5;
+      font-size: 18px;
+      padding: 8px 0;
+    }
+
+    .order {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 22px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .order.waiting-border {
+      border-color: rgba(217,119,6,.55);
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #040814;
+      border-radius: 18px;
+      padding: 16px;
+      font-size: 14px;
+      line-height: 1.4;
+      margin: 0;
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: 1fr; }
+      h1 { font-size: 28px; }
+      .title { font-size: 22px; }
+      .key, .val { font-size: 16px; }
+    }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <h1>PayHub Trader</h1>
 
     <div class="top">
-      <button class="btn" onclick="loadAll()">Обновить</button>
+      <button class="btn" onclick="loadAll()">Обновить всё</button>
+      <button class="btn orange" onclick="loadOrders()">Обновить заявки</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="k">Заявок в ожидании</div>
+        <div class="v" id="statWaiting">0</div>
+      </div>
+      <div class="stat">
+        <div class="k">Оплачено сегодня</div>
+        <div class="v" id="statPaid">0</div>
+      </div>
+      <div class="stat">
+        <div class="k">Оборот сегодня</div>
+        <div class="v" id="statTurnover">0</div>
+      </div>
+      <div class="stat">
+        <div class="k">Мой профит</div>
+        <div class="v" id="statProfit">0</div>
+      </div>
     </div>
 
     <div class="card">
       <div class="title">Мой профиль</div>
+      <div class="small" id="traderInfo">trader_id: trader_1</div>
       <div id="profileBox" class="empty">Загрузка...</div>
     </div>
 
     <div class="card">
       <div class="title">Мои заявки</div>
+      <div class="small">Сначала показываются заявки в ожидании</div>
       <div id="ordersBox" class="empty">Загрузка...</div>
     </div>
 
@@ -76,36 +276,90 @@ async function get(path){
 }
 
 async function patch(path){
-  const r = await fetch(API + path, { method:"PATCH", headers:{ "Content-Type":"application/json" } });
+  const r = await fetch(API + path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" }
+  });
   return await r.json();
 }
 
-function statusBadge(s){
-  s = String(s || "").toLowerCase();
-  if(s === "paid") return '<span class="badge paid">PAID</span>';
-  if(s === "rejected") return '<span class="badge rejected">REJECTED</span>';
-  return '<span class="badge waiting">WAITING</span>';
+function escapeHtml(v){
+  return String(v ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function badge(s){
+  const status = String(s || "").toLowerCase();
+  return `<span class="badge ${escapeHtml(status)}">${escapeHtml(status || "-")}</span>`;
+}
+
+function timeLeft(createdAt){
+  if(!createdAt) return "-";
+
+  const created = new Date(createdAt).getTime();
+  const expires = created + 15 * 60 * 1000;
+  const left = expires - Date.now();
+
+  if(left <= 0) return "истекло";
+
+  const min = Math.floor(left / 60000);
+  const sec = Math.floor((left % 60000) / 1000);
+  return `${min}м ${sec}с`;
+}
+
+function sortOrders(a, b){
+  const priority = { waiting: 1, paid: 2, rejected: 3, cancelled: 4 };
+  const sa = priority[String(a.status || "").toLowerCase()] || 9;
+  const sb = priority[String(b.status || "").toLowerCase()] || 9;
+
+  if(sa !== sb) return sa - sb;
+
+  return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+}
+
+function calcStats(orders, cards){
+  const waiting = orders.filter(o => o.status === "waiting").length;
+  const paid = orders.filter(o => o.status === "paid").length;
+
+  const turnover = cards.reduce((sum, c) => sum + Number(c.turnover_today || 0), 0);
+
+  const profit = orders
+    .filter(o => o.status === "paid")
+    .reduce((sum, o) => sum + Number(o.trader_profit_uah || 0), 0);
+
+  document.getElementById("statWaiting").textContent = waiting;
+  document.getElementById("statPaid").textContent = paid;
+  document.getElementById("statTurnover").textContent = turnover;
+  document.getElementById("statProfit").textContent = profit;
 }
 
 async function loadProfile(){
   const data = await get("/api/admin/traders");
   const id = traderId();
+  document.getElementById("traderInfo").textContent = "trader_id: " + id;
+
   const trader = (data.traders || []).find(t => t.id === id);
   const box = document.getElementById("profileBox");
 
   if(!trader){
-    box.innerHTML = "Трейдер не найден: " + id;
-    return;
+    box.innerHTML = "Трейдер не найден: " + escapeHtml(id);
+    return null;
   }
 
   box.innerHTML = `
-    <div class="row"><div class="key">ID</div><div class="val">${trader.id}</div></div>
-    <div class="row"><div class="key">Имя</div><div class="val">${trader.name}</div></div>
-    <div class="row"><div class="key">Статус</div><div class="val">${trader.status}</div></div>
-    <div class="row"><div class="key">Процент</div><div class="val">${trader.percent}%</div></div>
-    <div class="row"><div class="key">USDT</div><div class="val">${trader.available_usdt}</div></div>
-    <div class="row"><div class="key">Резерв</div><div class="val">${trader.reserved_usdt || 0}</div></div>
+    <div class="row"><div class="key">ID</div><div class="val">${escapeHtml(trader.id)}</div></div>
+    <div class="row"><div class="key">Имя</div><div class="val">${escapeHtml(trader.name)}</div></div>
+    <div class="row"><div class="key">Статус</div><div class="val">${badge(trader.status)}</div></div>
+    <div class="row"><div class="key">Процент</div><div class="val">${escapeHtml(trader.percent)}%</div></div>
+    <div class="row"><div class="key">USDT</div><div class="val">${escapeHtml(trader.available_usdt)}</div></div>
+    <div class="row"><div class="key">Резерв</div><div class="val">${escapeHtml(trader.reserved_usdt || 0)}</div></div>
   `;
+
+  return trader;
 }
 
 async function loadOrders(){
@@ -113,58 +367,74 @@ async function loadOrders(){
   out(data);
 
   const id = traderId();
-  const orders = (data.orders || []).filter(o => o.trader_id === id);
+  const orders = (data.orders || [])
+    .filter(o => o.trader_id === id)
+    .sort(sortOrders);
+
   const box = document.getElementById("ordersBox");
 
   if(!orders.length){
     box.innerHTML = '<div class="empty">Заявок пока нет</div>';
-    return;
+    return [];
   }
 
   box.innerHTML = orders.map(o => {
     const can = o.status === "waiting";
+
     return `
-      <div class="card">
-        <div class="row"><div class="key">Order</div><div class="val">${o.id}</div></div>
-        <div class="row"><div class="key">Сумма</div><div class="val">${o.amount_uah} UAH</div></div>
-        <div class="row"><div class="key">Статус</div><div class="val">${statusBadge(o.status)}</div></div>
-        <div class="row"><div class="key">Банк</div><div class="val">${o.bank}</div></div>
-        <div class="row"><div class="key">Карта</div><div class="val">${o.card_number}</div></div>
-        <div class="row"><div class="key">Профит</div><div class="val">${o.trader_profit_uah} UAH</div></div>
+      <div class="order ${can ? "waiting-border" : ""}">
+        <div class="row"><div class="key">Order</div><div class="val">${escapeHtml(o.id)}</div></div>
+        <div class="row"><div class="key">Сумма</div><div class="val">${escapeHtml(o.amount_uah)} UAH</div></div>
+        <div class="row"><div class="key">Статус</div><div class="val">${badge(o.status)}</div></div>
+        <div class="row"><div class="key">Осталось</div><div class="val">${escapeHtml(o.status === "waiting" ? timeLeft(o.created_at) : "-")}</div></div>
+        <div class="row"><div class="key">Банк</div><div class="val">${escapeHtml(o.bank)}</div></div>
+        <div class="row"><div class="key">Карта</div><div class="val">${escapeHtml(o.card_number)}</div></div>
+        <div class="row"><div class="key">Владелец</div><div class="val">${escapeHtml(o.card_holder)}</div></div>
+        <div class="row"><div class="key">Клиент</div><div class="val">${escapeHtml(o.client_name || "-")}</div></div>
+        <div class="row"><div class="key">Профит</div><div class="val">${escapeHtml(o.trader_profit_uah)} UAH</div></div>
+        <div class="row"><div class="key">Создан</div><div class="val">${escapeHtml(o.created_at || "-")}</div></div>
+
         ${can ? `
           <div class="actions">
-            <button class="btn green" onclick="confirmOrder('${o.id}')">Подтвердить</button>
-            <button class="btn red" onclick="rejectOrder('${o.id}')">Отклонить</button>
+            <button class="btn green" onclick="confirmOrder('${escapeHtml(o.id)}')">Подтвердить</button>
+            <button class="btn red" onclick="rejectOrder('${escapeHtml(o.id)}')">Отклонить</button>
           </div>
         ` : ""}
       </div>
     `;
   }).join("");
+
+  return orders;
 }
 
 async function loadCards(){
   const data = await get("/api/admin/cards");
   const id = traderId();
+
   const cards = (data.cards || []).filter(c => c.trader_id === id);
   const box = document.getElementById("cardsBox");
 
   if(!cards.length){
     box.innerHTML = '<div class="empty">Карт пока нет</div>';
-    return;
+    return [];
   }
 
   box.innerHTML = cards.map(c => `
-    <div class="card">
-      <div class="row"><div class="key">ID</div><div class="val">${c.id}</div></div>
-      <div class="row"><div class="key">Банк</div><div class="val">${c.bank}</div></div>
-      <div class="row"><div class="key">Карта</div><div class="val">${c.card_number}</div></div>
-      <div class="row"><div class="key">Владелец</div><div class="val">${c.card_holder}</div></div>
-      <div class="row"><div class="key">Мин/Макс</div><div class="val">${c.min_amount}-${c.max_amount}</div></div>
-      <div class="row"><div class="key">Оборот сегодня</div><div class="val">${c.turnover_today || 0}</div></div>
-      <div class="row"><div class="key">Активна</div><div class="val">${c.active ? "Да" : "Нет"}</div></div>
+    <div class="order">
+      <div class="row"><div class="key">ID</div><div class="val">${escapeHtml(c.id)}</div></div>
+      <div class="row"><div class="key">Банк</div><div class="val">${escapeHtml(c.bank)}</div></div>
+      <div class="row"><div class="key">Карта</div><div class="val">${escapeHtml(c.card_number)}</div></div>
+      <div class="row"><div class="key">Владелец</div><div class="val">${escapeHtml(c.card_holder)}</div></div>
+      <div class="row"><div class="key">Мин/Макс</div><div class="val">${escapeHtml(c.min_amount)}-${escapeHtml(c.max_amount)}</div></div>
+      <div class="row"><div class="key">Лимит день</div><div class="val">${escapeHtml(c.daily_limit)}</div></div>
+      <div class="row"><div class="key">Платежи</div><div class="val">${escapeHtml(c.payments_today || 0)} / ${escapeHtml(c.max_payments_per_day || 0)}</div></div>
+      <div class="row"><div class="key">Оборот сегодня</div><div class="val">${escapeHtml(c.turnover_today || 0)}</div></div>
+      <div class="row"><div class="key">Активна</div><div class="val">${badge(c.active ? "active" : "disabled")}</div></div>
       <div class="row"><div class="key">Занята</div><div class="val">${c.reserved ? "Да" : "Нет"}</div></div>
     </div>
   `).join("");
+
+  return cards;
 }
 
 async function confirmOrder(id){
@@ -183,9 +453,14 @@ async function rejectOrder(id){
 
 async function loadAll(){
   await loadProfile();
-  await loadOrders();
-  await loadCards();
+  const orders = await loadOrders();
+  const cards = await loadCards();
+  calcStats(orders || [], cards || []);
 }
+
+setInterval(() => {
+  loadAll();
+}, 15000);
 
 loadAll();
 </script>
