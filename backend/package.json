@@ -1,0 +1,11 @@
+{
+  "name": "payhub-backend",
+  "version": "1.0.0",
+  "description": "PayHub backend API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Keks148",
+  "license": "MIT"
+}
