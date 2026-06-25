@@ -1,44 +1,62 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PayHub Admin Panel</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PayHub Admin</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0f1115;
-      color: #fff;
+    body { margin:0; font-family:Arial,sans-serif; background:#0f1115; color:white; padding:16px; }
+    h1 { margin-top:0; }
+    button { padding:12px 14px; margin:6px 4px; border:0; border-radius:10px; background:#1f6feb; color:white; font-weight:700; }
+    .box { background:#171a21; border:1px solid #2a2f3a; border-radius:12px; padding:14px; margin:12px 0; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#090b10; padding:12px; border-radius:10px; }
+  </style>
+</head>
+<body>
+  <h1>PayHub Admin Panel</h1>
+
+  <div>
+    <button onclick="loadStats()">Статистика</button>
+    <button onclick="loadOrders()">Ордера</button>
+    <button onclick="loadTraders()">Трейдеры</button>
+    <button onclick="loadCards()">Карты</button>
+  </div>
+
+  <div class="box">
+    <h2>Ответ API</h2>
+    <pre id="output">Нажми кнопку сверху</pre>
+  </div>
+
+  <script>
+    const API = "https://payhub-backend-kn3h.onrender.com/api/admin";
+
+    async function show(url) {
+      const out = document.getElementById("output");
+      out.textContent = "Загрузка...";
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        out.textContent = "Ошибка: " + e.message;
+      }
     }
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 16px;
+
+    function loadStats() {
+      show(API + "/stats");
     }
-    h1 {
-      margin: 0 0 16px;
-      font-size: 28px;
+
+    function loadOrders() {
+      show(API + "/orders");
     }
-    .topbar {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
+
+    function loadTraders() {
+      show(API + "/traders");
     }
-    .btn {
-      background: #1f6feb;
-      color: #fff;
-      border: 0;
-      border-radius: 10px;
-      padding: 12px 16px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 700;
+
+    function loadCards() {
+      show(API + "/cards");
     }
-    .btn.secondary { background: #2a2f3a; }
-    .btn.green { background: #1f8b4c; }
-    .btn.red { background: #b42318; }
-    .btn.orange { background: #d97706; }
-    .btn:disabled { opacity: .
+  </script>
+</body>
+</html>
