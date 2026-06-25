@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 
 const healthRoutes = require("./routes/health");
 const merchantRoutes = require("./routes/merchant");
@@ -10,6 +11,9 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Раздаём frontend-папку как сайт
+app.use(express.static(path.join(__dirname, "../frontend")));
+
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -18,6 +22,11 @@ app.get("/", (req, res) => {
     version: "1.0.0",
     modules: ["health", "merchant", "trader", "admin"]
   });
+});
+
+// Прямая ссылка на админку
+app.get("/admin.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/admin.html"));
 });
 
 app.use("/health", healthRoutes);
