@@ -1,35 +1,72 @@
 const express = require("express");
-const orders = require("../data/orders");
-const cards = require("../data/cards");
-const traders = require("../data/traders");
-
 const router = express.Router();
 
-function generatePaymentId() {
-  return "ph_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+/*
+  Merchant API
+  Клиент создаёт заявку → система выдаёт свободную карту → ордер попадает в админку.
+*/
+
+if (!global.payhubStore) {
+  global.payhubStore = {
+    traders: [
+      {
+        id: "trader_1",
+        name: "Trader_1",
+        status: "online",
+        percent: 4.5,
+        available_usdt: 374.3,
+        reserved_usdt: 0
+      }
+    ],
+    cards: [
+      {
+        id: "card_1",
+        trader_id: "trader_1",
+        bank: "Monobank",
+        card_number: "5375410000001234",
+        card_holder: "PAYHUB TEST CARD",
+        min_amount: 1000,
+        max_amount: 6000,
+        daily_limit: 500000,
+        max_payments_per_day: 5,
+        payments_today: 0,
+        turnover_today: 0,
+        active: true,
+        reserved: false,
+        current_order_id: null
+      }
+    ],
+    orders: []
+  };
 }
 
-function findAvailableCard(amount) {
-  return cards.find((card) => {
-    const trader = traders.find((item) => item.id === card.trader_id);
+const store = global.payhubStore;
 
-    if (!trader) return false;
-    if (trader.status !== "online") return false;
-    if (trader.available_usdt <= 0) return false;
+function makeOrderId() {
+  return "ORDER_" + Date.now();
+}
 
+function getTraderById(traderId) {
+  return store.traders.find(t => t.id === traderId);
+}
+
+function getOrderById(orderId) {
+  return store.orders.find(o => o.id === orderId);
+}
+
+function findFreeCardForAmount(amount) {
+  return store.cards.find(card => {
     if (!card.active) return false;
     if (card.reserved) return false;
-    if (amount < card.min_amount) return false;
-    if (amount > card.max_amount) return false;
-    if (card.payments_today >= card.max_payments_per_day) return false;
-    if (card.turnover_today + amount > card.daily_limit) return false;
+
+    if (amount < Number(card.min_amount)) return false;
+    if (amount > Number(card.max_amount)) return false;
+
+    if (Number(card.turnover_today || 0) + amount > Number(card.daily_limit || 0)) return false;
+    if (Number(card.payments_today || 0) >= Number(card.max_payments_per_day || 0)) return false;
 
     return true;
   });
-}
-
-function calculateTraderProfit(amount, traderPercent) {
-  return Number(((amount * traderPercent) / 100).toFixed(2));
 }
 
 router.get("/", (req, res) => {
@@ -49,128 +86,119 @@ router.get("/", (req, res) => {
 });
 
 router.post("/create-order", (req, res) => {
-  const {
-    merchant_id = "merchant_demo",
-    order_id,
-    amount,
-    currency = "UAH",
-    callback_url = null,
-    client_name = null,
-    description = null,
-    metadata = {}
-  } = req.body;
+  try {
+    const {
+      amount,
+      amount_uah,
+      currency = "UAH",
+      merchant_id = "merchant_demo",
+      client_name = null,
+      description = null
+    } = req.body || {};
 
-  const numericAmount = Number(amount);
+    const finalAmount = Number(amount_uah || amount || 0);
 
-  if (!order_id) {
-    return res.status(400).json({
+    if (!finalAmount || finalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "amount or amount_uah is required"
+      });
+    }
+
+    const card = findFreeCardForAmount(finalAmount);
+
+    if (!card) {
+      return res.status(400).json({
+        success: false,
+        message: "No available card for this amount"
+      });
+    }
+
+    const trader = getTraderById(card.trader_id);
+
+    if (!trader) {
+      return res.status(400).json({
+        success: false,
+        message: "Trader not found for selected card"
+      });
+    }
+
+    const traderPercent = Number(trader.percent || 0);
+    const traderProfit = Number(((finalAmount * traderPercent) / 100).toFixed(2));
+
+    const order = {
+      id: makeOrderId(),
+      merchant_id,
+      amount_uah: finalAmount,
+      amount: finalAmount,
+      currency,
+      status: "waiting",
+      trader_id: trader.id,
+      trader_name: trader.name,
+      trader_percent: traderPercent,
+      trader_profit_uah: traderProfit,
+      card_id: card.id,
+      bank: card.bank,
+      card_number: card.card_number,
+      card_holder: card.card_holder,
+      client_name,
+      description,
+      created_at: new Date().toISOString(),
+      paid_at: null,
+      rejected_at: null,
+      cancelled_at: null
+    };
+
+    store.orders.unshift(order);
+
+    card.reserved = true;
+    card.current_order_id = order.id;
+
+    return res.json({
+      success: true,
+      message: "Order created",
+      payment: {
+        order_id: order.id,
+        amount: order.amount_uah,
+        currency: order.currency,
+        status: order.status,
+        bank: order.bank,
+        card_number: order.card_number,
+        card_holder: order.card_holder,
+        expires_in_minutes: 15
+      },
+      order
+    });
+  } catch (e) {
+    return res.status(500).json({
       success: false,
-      error_code: "ORDER_ID_REQUIRED",
-      message: "order_id is required"
+      message: e.message
     });
   }
-
-  if (!numericAmount || numericAmount <= 0) {
-    return res.status(400).json({
-      success: false,
-      error_code: "AMOUNT_REQUIRED",
-      message: "amount must be greater than 0"
-    });
-  }
-
-  const existingOrder = orders.find((order) => order.merchant_order_id === order_id);
-
-  if (existingOrder) {
-    return res.status(409).json({
-      success: false,
-      error_code: "ORDER_ALREADY_EXISTS",
-      message: "order_id already exists",
-      payment_id: existingOrder.payment_id,
-      status: existingOrder.status
-    });
-  }
-
-  const selectedCard = findAvailableCard(numericAmount);
-
-  if (!selectedCard) {
-    return res.status(409).json({
-      success: false,
-      error_code: "NO_AVAILABLE_CARDS",
-      message: "No available card for this amount"
-    });
-  }
-
-  const trader = traders.find((item) => item.id === selectedCard.trader_id);
-  const traderPercent = trader.percent;
-  const traderProfitUah = calculateTraderProfit(numericAmount, traderPercent);
-
-  selectedCard.reserved = true;
-  selectedCard.current_order_id = order_id;
-  selectedCard.payments_today += 1;
-  selectedCard.turnover_today += numericAmount;
-
-  const order = {
-    payment_id: generatePaymentId(),
-    merchant_id,
-    merchant_order_id: order_id,
-    amount: numericAmount,
-    currency,
-    status: "WAITING_PAYMENT",
-
-    assigned_trader_id: trader.id,
-    assigned_trader_name: trader.name,
-    assigned_card_id: selectedCard.id,
-
-    bank: selectedCard.bank,
-    card_number: selectedCard.card_number,
-    card_holder: selectedCard.card_holder,
-
-    trader_percent: traderPercent,
-    trader_profit_uah: traderProfitUah,
-
-    callback_url,
-    client_name,
-    description,
-    metadata,
-
-    created_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-    confirmed_at: null,
-    cancelled_at: null
-  };
-
-  orders.push(order);
-
-  return res.status(201).json({
-    success: true,
-    payment: order
-  });
 });
 
 router.get("/orders", (req, res) => {
-  const { status } = req.query;
-  let result = orders;
+  const merchantId = req.query.merchant_id;
 
-  if (status) {
-    result = orders.filter((order) => order.status === status);
+  let orders = store.orders;
+
+  if (merchantId) {
+    orders = orders.filter(o => o.merchant_id === merchantId);
   }
 
   res.json({
     success: true,
-    count: result.length,
-    orders: result
+    count: orders.length,
+    orders
   });
 });
 
 router.get("/orders/:id", (req, res) => {
-  const order = orders.find(
-    (item) => item.payment_id === req.params.id || item.merchant_order_id === req.params.id
-  );
+  const order = getOrderById(req.params.id);
 
   if (!order) {
     return res.status(404).json({
       success: false,
-      error_code: "ORDER_NOT_FOUND",
       message: "Order not found"
     });
   }
@@ -182,64 +210,53 @@ router.get("/orders/:id", (req, res) => {
 });
 
 router.get("/orders/:id/status", (req, res) => {
-  const order = orders.find(
-    (item) => item.payment_id === req.params.id || item.merchant_order_id === req.params.id
-  );
+  const order = getOrderById(req.params.id);
 
   if (!order) {
     return res.status(404).json({
       success: false,
-      error_code: "ORDER_NOT_FOUND",
       message: "Order not found"
     });
   }
 
   res.json({
     success: true,
-    payment_id: order.payment_id,
-    merchant_order_id: order.merchant_order_id,
+    order_id: order.id,
     status: order.status,
-    amount: order.amount,
-    currency: order.currency,
-    created_at: order.created_at,
-    expires_at: order.expires_at,
-    confirmed_at: order.confirmed_at
+    amount: order.amount_uah,
+    currency: order.currency
   });
 });
 
 router.post("/orders/:id/cancel", (req, res) => {
-  const order = orders.find(
-    (item) => item.payment_id === req.params.id || item.merchant_order_id === req.params.id
-  );
+  const order = getOrderById(req.params.id);
 
   if (!order) {
     return res.status(404).json({
       success: false,
-      error_code: "ORDER_NOT_FOUND",
       message: "Order not found"
     });
   }
 
-  if (order.status === "CONFIRMED") {
+  if (order.status !== "waiting") {
     return res.status(400).json({
       success: false,
-      error_code: "ORDER_ALREADY_CONFIRMED",
-      message: "Confirmed order cannot be cancelled"
+      message: `Only waiting order can be cancelled. Current status: ${order.status}`
     });
   }
 
-  const card = cards.find((item) => item.id === order.assigned_card_id);
+  order.status = "cancelled";
+  order.cancelled_at = new Date().toISOString();
 
+  const card = store.cards.find(c => c.id === order.card_id);
   if (card) {
     card.reserved = false;
     card.current_order_id = null;
   }
 
-  order.status = "CANCELLED";
-  order.cancelled_at = new Date().toISOString();
-
   res.json({
     success: true,
+    message: "Order cancelled",
     order
   });
 });
