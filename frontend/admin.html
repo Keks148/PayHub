@@ -3,538 +3,217 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PayHub Admin</title>
+
+  <title>PayHub Admin v1</title>
+
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg: #050816;
+      --panel: #0d1324;
+      --panel2: #111a2e;
+      --panel3: #08111f;
+      --line: rgba(255, 255, 255, 0.08);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --blue: #2563eb;
+      --blue2: #1d4ed8;
+      --green: #16a34a;
+      --green2: #22c55e;
+      --red: #dc2626;
+      --orange: #f59e0b;
+      --purple: #7c3aed;
+      --cyan: #06b6d4;
+      --shadow: 0 20px 50px rgba(0,0,0,.35);
+      --radius: 22px;
+    }
+
     body {
       margin: 0;
-      background: #070b14;
-      color: #fff;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, .22), transparent 28%),
+        radial-gradient(circle at top right, rgba(124, 58, 237, .18), transparent 30%),
+        linear-gradient(180deg, #050816 0%, #070b14 100%);
+      color: var(--text);
       font-family: Arial, sans-serif;
     }
-    .wrap {
-      max-width: 1150px;
+
+    .app {
+      max-width: 1220px;
       margin: 0 auto;
-      padding: 16px;
+      padding: 18px;
+      padding-bottom: 120px;
     }
-    h1 { margin: 8px 0 16px; font-size: 28px; }
-    h2 { margin: 0 0 12px; font-size: 22px; }
-    .top {
+
+    .topbar {
       position: sticky;
       top: 0;
-      z-index: 5;
-      background: #070b14;
-      padding: 10px 0;
+      z-index: 50;
+      margin: -18px -18px 18px;
+      padding: 18px;
+      backdrop-filter: blur(18px);
+      background: rgba(5, 8, 22, .82);
+      border-bottom: 1px solid var(--line);
     }
-    .actions {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    button {
-      border: 0;
-      border-radius: 14px;
-      padding: 13px;
-      color: #fff;
-      font-weight: 700;
-      font-size: 15px;
-      cursor: pointer;
-    }
-    .blue { background: #2563eb; }
-    .green { background: #15803d; }
-    .orange { background: #b66a00; }
-    .red { background: #b42318; }
-    .gray { background: #2b3242; }
-    .purple { background: #6d28d9; }
-    .card {
-      background: #111827;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 20px;
-      padding: 16px;
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
       margin-bottom: 16px;
     }
-    .stats {
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background:
+        linear-gradient(135deg, #2563eb, #7c3aed);
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 900;
+      box-shadow: 0 12px 30px rgba(37,99,235,.28);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1;
+      letter-spacing: -.5px;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 5px;
+    }
+
+    .live {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(34,197,94,.12);
+      color: #86efac;
+      border: 1px solid rgba(34,197,94,.25);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 0 rgba(34,197,94,.8);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34,197,94,.7); }
+      70% { box-shadow: 0 0 0 10px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+
+    .quick-actions {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 10px;
-    }
-    .stat {
-      background: #0b1220;
-      border-radius: 16px;
-      padding: 14px;
-      border: 1px solid rgba(255,255,255,0.07);
-    }
-    .label { color: #9ca3af; font-size: 13px; }
-    .value { font-size: 26px; font-weight: 800; margin-top: 6px; }
-    .item {
-      background: #0b1220;
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 16px;
-      padding: 14px;
-      margin-bottom: 10px;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
-      padding: 9px 0;
-    }
-    .row:last-child { border-bottom: 0; }
-    .key { color: #9ca3af; }
-    .val {
-      text-align: right;
-      font-weight: 700;
-      word-break: break-word;
-    }
-    .status {
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      text-transform: uppercase;
-    }
-    .online, .paid, .active { background: #064e3b; color: #86efac; }
-    .waiting, .pause { background: #78350f; color: #fcd34d; }
-    .offline, .rejected, .cancelled, .expired, .frozen, .disabled {
-      background: #7f1d1d;
-      color: #fca5a5;
-    }
-    .mini-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .mini-actions button {
-      padding: 10px 12px;
-      font-size: 13px;
-    }
-    .tabs {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
       margin-bottom: 14px;
     }
+
+    button {
+      border: 0;
+      border-radius: 16px;
+      padding: 13px 14px;
+      color: white;
+      font-weight: 900;
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(0,0,0,.22);
+    }
+
+    button:active {
+      transform: scale(.98);
+    }
+
+    .btn-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+    .btn-green { background: linear-gradient(135deg, #16a34a, #15803d); }
+    .btn-orange { background: linear-gradient(135deg, #f59e0b, #b45309); }
+    .btn-red { background: linear-gradient(135deg, #dc2626, #991b1b); }
+    .btn-purple { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+    .btn-gray { background: linear-gradient(135deg, #334155, #1e293b); }
+    .btn-cyan { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
     .tab {
-      background: #1f2937;
-      padding: 10px;
-      border-radius: 12px;
-      text-align: center;
-      font-weight: 800;
-      font-size: 13px;
-    }
-    .tab.active-tab { background: #2563eb; }
-    .hidden { display: none; }
-    pre {
-      white-space: pre-wrap;
-      word-break: break-word;
-      background: #020617;
-      padding: 12px;
+      flex: 0 0 auto;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+      padding: 11px 14px;
       border-radius: 14px;
-      color: #d1d5db;
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 14px;
+    }
+
+    .tab.active {
+      color: #fff;
+      border-color: rgba(37,99,235,.65);
+      background: linear-gradient(135deg, rgba(37,99,235,.95), rgba(124,58,237,.9));
+      box-shadow: 0 14px 28px rgba(37,99,235,.18);
+    }
+
+    .page {
+      display: none;
+      animation: fade .25s ease;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .section-title {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 18px 0 12px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -.3px;
+    }
+
+    .section-title span {
+      color: var(--muted);
       font-size: 13px;
-      max-height: 260px;
-      overflow: auto;
     }
-    a { color: #93c5fd; }
-    @media (min-width: 800px) {
-      .actions { grid-template-columns: repeat(4, 1fr); }
-      .stats { grid-template-columns: repeat(4, 1fr); }
-      .tabs { grid-template-columns: repeat(5, 1fr); }
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="top">
-      <h1>PayHub Admin</h1>
-
-      <div class="actions">
-        <button class="blue" onclick="loadAll()">Обновить</button>
-        <button class="orange" onclick="createTestOrder()">Тест заявка</button>
-        <button class="purple" onclick="createTrader()">+ Трейдер</button>
-        <button class="green" onclick="createCard()">+ Карта</button>
-      </div>
-
-      <div class="tabs">
-        <div class="tab active-tab" onclick="showTab('dashboard', this)">Главная</div>
-        <div class="tab" onclick="showTab('orders', this)">Заявки</div>
-        <div class="tab" onclick="showTab('traders', this)">Трейдеры</div>
-        <div class="tab" onclick="showTab('cards', this)">Карты</div>
-        <div class="tab" onclick="showTab('events', this)">Журнал</div>
-      </div>
-    </div>
-
-    <section id="dashboard" class="page">
-      <div class="card">
-        <h2>Статистика</h2>
-        <div id="statsBox" class="stats"></div>
-      </div>
-    </section>
-
-    <section id="orders" class="page hidden">
-      <div class="card">
-        <h2>Заявки</h2>
-        <div id="ordersBox"></div>
-      </div>
-    </section>
-
-    <section id="traders" class="page hidden">
-      <div class="card">
-        <h2>Трейдеры</h2>
-        <div id="tradersBox"></div>
-      </div>
-    </section>
-
-    <section id="cards" class="page hidden">
-      <div class="card">
-        <h2>Карты</h2>
-        <div id="cardsBox"></div>
-      </div>
-    </section>
-
-    <section id="events" class="page hidden">
-      <div class="card">
-        <h2>Журнал событий</h2>
-        <div id="eventsBox"></div>
-      </div>
-    </section>
-
-    <div class="card">
-      <h2>Ответ сервера</h2>
-      <pre id="apiOutput">Загрузка...</pre>
-    </div>
-  </div>
-
-<script>
-  const $ = (id) => document.getElementById(id);
-
-  function out(data) {
-    $("apiOutput").textContent =
-      typeof data === "string" ? data : JSON.stringify(data, null, 2);
-  }
-
-  function esc(v) {
-    return String(v ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
-  }
-
-  function statusCls(v) {
-    return String(v || "").toLowerCase();
-  }
-
-  async function request(url, method = "GET", body = null) {
-    const options = { method, headers: { "Content-Type": "application/json" } };
-    if (body) options.body = JSON.stringify(body);
-
-    const res = await fetch(url, options);
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) throw new Error(data.message || data.reason || "Ошибка API");
-    return data;
-  }
-
-  function showTab(id, el) {
-    document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active-tab"));
-    $(id).classList.remove("hidden");
-    el.classList.add("active-tab");
-  }
-
-  function renderStats(stats) {
-    const items = [
-      ["Всего заявок", stats.total_orders],
-      ["В ожидании", stats.waiting_orders],
-      ["Оплачено", stats.paid_orders],
-      ["Оборот UAH", stats.turnover_uah],
-      ["Профит UAH", stats.trader_profit_uah],
-      ["Профит USDT", stats.trader_profit_usdt],
-      ["Трейдеры", stats.traders_count],
-      ["Активные карты", stats.active_cards]
-    ];
-
-    $("statsBox").innerHTML = items.map(i => `
-      <div class="stat">
-        <div class="label">${esc(i[0])}</div>
-        <div class="value">${esc(i[1] ?? 0)}</div>
-      </div>
-    `).join("");
-  }
-
-  function renderOrders(orders) {
-    if (!orders.length) {
-      $("ordersBox").innerHTML = `<div class="item">Заявок пока нет</div>`;
-      return;
-    }
-
-    $("ordersBox").innerHTML = orders.map(o => `
-      <div class="item">
-        <div class="row"><div class="key">ID</div><div class="val">${esc(o.id)}</div></div>
-        <div class="row"><div class="key">Сумма</div><div class="val">${esc(o.amount_uah)} UAH</div></div>
-        <div class="row"><div class="key">USDT</div><div class="val">${esc(o.amount_usdt)}</div></div>
-        <div class="row"><div class="key">Статус</div><div class="val"><span class="status ${statusCls(o.status)}">${esc(o.status)}</span></div></div>
-        <div class="row"><div class="key">Трейдер</div><div class="val">${esc(o.trader_name || o.trader_id)}</div></div>
-        <div class="row"><div class="key">Карта</div><div class="val">${esc(o.bank)}<br>${esc(o.card_number)}</div></div>
-        <div class="row"><div class="key">Чек</div><div class="val">${o.receipt_url ? `<a href="${esc(o.receipt_url)}" target="_blank">Открыть</a>` : "-"}</div></div>
-        <div class="row"><div class="key">Создано</div><div class="val">${esc(o.created_at)}</div></div>
-
-        ${o.status === "waiting" ? `
-          <div class="mini-actions">
-            <button class="green" onclick="confirmOrder('${esc(o.trader_id)}','${esc(o.id)}')">Подтвердить</button>
-            <button class="red" onclick="rejectOrder('${esc(o.trader_id)}','${esc(o.id)}')">Отклонить</button>
-          </div>
-        ` : ""}
-      </div>
-    `).join("");
-  }
-
-  function renderTraders(traders) {
-    if (!traders.length) {
-      $("tradersBox").innerHTML = `<div class="item">Трейдеров пока нет</div>`;
-      return;
-    }
-
-    $("tradersBox").innerHTML = traders.map(t => `
-      <div class="item">
-        <div class="row"><div class="key">ID</div><div class="val">${esc(t.id)}</div></div>
-        <div class="row"><div class="key">Имя</div><div class="val">${esc(t.name)}</div></div>
-        <div class="row"><div class="key">Статус</div><div class="val"><span class="status ${statusCls(t.status)}">${esc(t.status)}</span></div></div>
-        <div class="row"><div class="key">Баланс</div><div class="val">${esc(t.available_usdt)} USDT</div></div>
-        <div class="row"><div class="key">Резерв</div><div class="val">${esc(t.reserved_usdt)} USDT</div></div>
-        <div class="row"><div class="key">Заработано</div><div class="val">${esc(t.earned_usdt)} USDT</div></div>
-        <div class="row"><div class="key">Активные заявки</div><div class="val">${esc(t.active_orders)} / ${esc(t.max_active_orders)}</div></div>
-        <div class="row"><div class="key">Приоритет</div><div class="val">${esc(t.priority)}</div></div>
-
-        <div class="mini-actions">
-          <button class="green" onclick="setTraderStatus('${esc(t.id)}','online')">Онлайн</button>
-          <button class="orange" onclick="setTraderStatus('${esc(t.id)}','pause')">Пауза</button>
-          <button class="gray" onclick="setTraderStatus('${esc(t.id)}','offline')">Оффлайн</button>
-          <button class="blue" onclick="editTrader('${esc(t.id)}')">Редактировать</button>
-        </div>
-      </div>
-    `).join("");
-  }
-
-  function renderCards(cards) {
-    if (!cards.length) {
-      $("cardsBox").innerHTML = `<div class="item">Карт пока нет</div>`;
-      return;
-    }
-
-    $("cardsBox").innerHTML = cards.map(c => `
-      <div class="item">
-        <div class="row"><div class="key">ID</div><div class="val">${esc(c.id)}</div></div>
-        <div class="row"><div class="key">Банк</div><div class="val">${esc(c.bank)}</div></div>
-        <div class="row"><div class="key">Карта</div><div class="val">${esc(c.card_number)}</div></div>
-        <div class="row"><div class="key">Владелец</div><div class="val">${esc(c.card_holder)}</div></div>
-        <div class="row"><div class="key">Трейдер</div><div class="val">${esc(c.trader_id)}</div></div>
-        <div class="row"><div class="key">Мин/Макс</div><div class="val">${esc(c.min_amount)} - ${esc(c.max_amount)}</div></div>
-        <div class="row"><div class="key">Лимит день</div><div class="val">${esc(c.turnover_today)} / ${esc(c.daily_limit)}</div></div>
-        <div class="row"><div class="key">Платежи</div><div class="val">${esc(c.payments_today)} / ${esc(c.max_payments_per_day)}</div></div>
-        <div class="row"><div class="key">Статус</div><div class="val"><span class="status ${c.active ? "active" : "disabled"}">${c.active ? "active" : "disabled"}</span></div></div>
-        <div class="row"><div class="key">Занята</div><div class="val">${c.reserved ? "Да" : "Нет"}</div></div>
-
-        <div class="mini-actions">
-          <button class="blue" onclick="resetCardDay('${esc(c.id)}')">Сбросить день</button>
-        </div>
-      </div>
-    `).join("");
-  }
-
-  function renderEvents(events) {
-    if (!events.length) {
-      $("eventsBox").innerHTML = `<div class="item">Журнал пустой</div>`;
-      return;
-    }
-
-    $("eventsBox").innerHTML = events.map(e => `
-      <div class="item">
-        <div class="row"><div class="key">Время</div><div class="val">${esc(e.created_at)}</div></div>
-        <div class="row"><div class="key">Тип</div><div class="val">${esc(e.type)}</div></div>
-        <div class="row"><div class="key">Событие</div><div class="val">${esc(e.message)}</div></div>
-      </div>
-    `).join("");
-  }
-
-  async function loadAll() {
-    try {
-      const [stats, orders, traders, cards, events] = await Promise.all([
-        request("/api/admin/stats"),
-        request("/api/admin/orders"),
-        request("/api/admin/traders"),
-        request("/api/admin/cards"),
-        request("/api/admin/events")
-      ]);
-
-      renderStats(stats.stats || {});
-      renderOrders(orders.orders || []);
-      renderTraders(traders.traders || []);
-      renderCards(cards.cards || []);
-      renderEvents(events.events || []);
-
-      out({ success: true, message: "Данные обновлены" });
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function createTestOrder() {
-    const amount = prompt("Сумма заявки UAH", "4200");
-    if (!amount) return;
-
-    try {
-      const data = await request("/api/merchant/create-payment", "POST", {
-        amount_uah: Number(amount)
-      });
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function createTrader() {
-    const name = prompt("Имя трейдера", "Trader_2");
-    if (!name) return;
-
-    const balance = prompt("Баланс USDT", "500");
-    if (balance === null) return;
-
-    const percent = prompt("Процент", "4.5");
-    if (percent === null) return;
-
-    try {
-      const data = await request("/api/admin/traders", "POST", {
-        name,
-        available_usdt: Number(balance),
-        percent: Number(percent),
-        status: "online",
-        priority: 0,
-        max_active_orders: 3
-      });
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function createCard() {
-    try {
-      const tradersData = await request("/api/admin/traders");
-      const traders = tradersData.traders || [];
-
-      if (!traders.length) {
-        alert("Сначала создай трейдера");
-        return;
-      }
-
-      const traderId = prompt(
-        "ID трейдера:\n" + traders.map(t => `${t.id} — ${t.name}`).join("\n"),
-        traders[0].id
-      );
-      if (!traderId) return;
-
-      const bank = prompt("Банк", "Monobank");
-      if (!bank) return;
-
-      const card_number = prompt("Номер карты", "5375410000009999");
-      if (!card_number) return;
-
-      const card_holder = prompt("Владелец", "PAYHUB CARD");
-      if (!card_holder) return;
-
-      const data = await request(`/api/trader/${traderId}/cards`, "POST", {
-        bank,
-        card_number,
-        card_holder,
-        min_amount: 1000,
-        max_amount: 6000,
-        daily_limit: 500000,
-        max_payments_per_day: 5
-      });
-
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function setTraderStatus(id, status) {
-    try {
-      const data = await request(`/api/trader/${id}/status`, "POST", { status });
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function editTrader(id) {
-    const balance = prompt("Новый баланс USDT. Оставь пустым если не менять");
-    const priority = prompt("Приоритет. Чем больше, тем выше. Оставь пустым если не менять");
-    const max = prompt("Максимум активных заявок. Оставь пустым если не менять");
-
-    const body = {};
-    if (balance !== "") body.available_usdt = Number(balance);
-    if (priority !== "") body.priority = Number(priority);
-    if (max !== "") body.max_active_orders = Number(max);
-
-    try {
-      const data = await request(`/api/admin/traders/${id}`, "PATCH", body);
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function confirmOrder(traderId, orderId) {
-    if (!confirm("Подтвердить оплату?")) return;
-
-    try {
-      const data = await request(`/api/trader/${traderId}/orders/${orderId}/confirm`, "POST", {});
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function rejectOrder(traderId, orderId) {
-    if (!confirm("Отклонить заявку?")) return;
-
-    try {
-      const data = await request(`/api/trader/${traderId}/orders/${orderId}/reject`, "POST", {
-        reason: "Rejected by admin"
-      });
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  async function resetCardDay(cardId) {
-    if (!confirm("Сбросить дневные лимиты карты?")) return;
-
-    try {
-      const data = await request(`/api/admin/cards/${cardId}/reset-day`, "POST", {});
-      out(data);
-      loadAll();
-    } catch (e) {
-      out({ success: false, error: e.message });
-    }
-  }
-
-  loadAll();
-  setInterval(loadAll, 10000);
-</script>
-</body>
-</html>
