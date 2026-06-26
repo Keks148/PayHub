@@ -3,311 +3,195 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PayHub Trader v3</title>
+
+  <title>PayHub Trader</title>
+
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;background:#060b16;color:#fff;font-family:Arial,sans-serif}
-    .wrap{max-width:900px;margin:0 auto;padding:18px 16px 40px}
-    h1{margin:0 0 14px;font-size:28px;font-weight:900}
-    .btn{border:0;border-radius:16px;padding:14px 16px;font-size:15px;font-weight:900;color:#fff;background:#2563eb;cursor:pointer}
-    .btn.green{background:#15803d}.btn.red{background:#b42318}.btn.orange{background:#b66a00}.btn.gray{background:#303849}
-    .top{display:grid;gap:10px;margin-bottom:14px}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
-    .stat,.card,.order{background:#121826;border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:16px}
-    .card,.order{margin-bottom:14px}
-    .k{color:#aab2c5;font-size:14px;margin-bottom:6px}
-    .v{font-size:28px;font-weight:900}
-    .title{font-size:22px;font-weight:900;margin-bottom:12px}
-    .small{color:#aab2c5;font-size:13px;margin-bottom:10px}
-    .row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}
-    .row:last-child{border-bottom:0}
-    .key{color:#aab2c5;font-size:15px}
-    .val{font-size:15px;font-weight:900;text-align:right;word-break:break-word}
-    .badge{display:inline-block;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:900;text-transform:uppercase}
-    .waiting{background:rgba(217,119,6,.25);color:#ffd166}
-    .paid,.online,.active{background:rgba(22,163,74,.25);color:#7ef29b}
-    .rejected,.cancelled,.expired,.frozen,.disabled{background:rgba(220,38,38,.22);color:#ff8d8d}
-    .pause{background:rgba(217,119,6,.25);color:#ffd166}
-    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-    .empty{color:#aab2c5;font-size:16px}
-    pre{white-space:pre-wrap;word-break:break-word;background:#040814;border-radius:16px;padding:14px;font-size:12px;max-height:260px;overflow:auto}
-    a{color:#79a7ff;font-weight:900}
-    @media(max-width:700px){.grid{grid-template-columns:1fr 1fr}.v{font-size:24px}.btn{width:100%}}
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <h1>PayHub Trader v3</h1>
-
-  <div class="top">
-    <button class="btn" onclick="loadAll(true)">Обновить всё</button>
-    <button class="btn green" onclick="topup()">Пополнить баланс</button>
-  </div>
-
-  <div class="grid">
-    <div class="stat"><div class="k">Баланс USDT</div><div class="v" id="available">0</div></div>
-    <div class="stat"><div class="k">Резерв USDT</div><div class="v" id="reserved">0</div></div>
-    <div class="stat"><div class="k">Заработано USDT</div><div class="v" id="earned">0</div></div>
-    <div class="stat"><div class="k">Курс USDT</div><div class="v" id="rate">0</div></div>
-  </div>
-
-  <div class="grid">
-    <div class="stat"><div class="k">Заявок WAITING</div><div class="v" id="waiting">0</div></div>
-    <div class="stat"><div class="k">Оборот сегодня</div><div class="v" id="turnover">0</div></div>
-  </div>
-
-  <div class="card">
-    <div class="title">Мой профиль</div>
-    <div id="profileBox" class="empty">Загрузка...</div>
-  </div>
-
-  <div class="card">
-    <div class="title">Мои заявки</div>
-    <div class="small">Новые заявки обновляются автоматически</div>
-    <div id="ordersBox" class="empty">Загрузка...</div>
-  </div>
-
-  <div class="card">
-    <div class="title">Мои карты</div>
-    <div id="cardsBox" class="empty">Загрузка...</div>
-  </div>
-
-  <div class="card">
-    <div class="title">Ответ API</div>
-    <pre id="apiOutput">...</pre>
-  </div>
-</div>
-
-<script>
-const API = "https://payhub-backend-kn3h.onrender.com";
-let lastWaitingIds = new Set();
-
-function traderId(){
-  return new URLSearchParams(location.search).get("trader_id") || "trader_1";
-}
-
-function out(data){
-  document.getElementById("apiOutput").textContent = JSON.stringify(data, null, 2);
-}
-
-async function get(path){
-  const r = await fetch(API + path);
-  return await r.json();
-}
-
-async function post(path, body){
-  const r = await fetch(API + path, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify(body || {})
-  });
-  return await r.json();
-}
-
-async function patch(path, body){
-  const r = await fetch(API + path, {
-    method:"PATCH",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify(body || {})
-  });
-  return await r.json();
-}
-
-function e(v){
-  return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
-}
-
-function badge(s){
-  s = String(s || "-").toLowerCase();
-  return `<span class="badge ${e(s)}">${e(s)}</span>`;
-}
-
-function timeLeft(expiresAt){
-  if(!expiresAt) return "-";
-  const left = new Date(expiresAt).getTime() - Date.now();
-  if(left <= 0) return "истекло";
-  const m = Math.floor(left / 60000);
-  const sec = Math.floor((left % 60000) / 1000);
-  return `${m}м ${sec}с`;
-}
-
-function beep(){
-  try{
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.value = 0.08;
-    osc.start();
-    setTimeout(()=>{osc.stop();ctx.close();},180);
-  }catch(e){}
-  if(navigator.vibrate) navigator.vibrate([200,100,200]);
-}
-
-async function loadWallet(){
-  const data = await get(`/api/trader/${traderId()}/wallet`);
-  document.getElementById("available").textContent = data.available_usdt ?? 0;
-  document.getElementById("reserved").textContent = data.reserved_usdt ?? 0;
-  document.getElementById("earned").textContent = data.earned_usdt ?? 0;
-  document.getElementById("rate").textContent = data.usdt_rate_uah ?? 0;
-  return data;
-}
-
-async function loadProfile(){
-  const data = await get("/api/admin/traders");
-  const trader = (data.traders || []).find(t => t.id === traderId());
-  const box = document.getElementById("profileBox");
-
-  if(!trader){
-    box.innerHTML = "Трейдер не найден";
-    return null;
-  }
-
-  box.innerHTML = `
-    <div class="row"><div class="key">ID</div><div class="val">${e(trader.id)}</div></div>
-    <div class="row"><div class="key">Имя</div><div class="val">${e(trader.name)}</div></div>
-    <div class="row"><div class="key">Статус</div><div class="val">${badge(trader.status)}</div></div>
-    <div class="row"><div class="key">Процент</div><div class="val">${e(trader.percent)}%</div></div>
-    <div class="row"><div class="key">Баланс</div><div class="val">${e(trader.available_usdt)} USDT</div></div>
-    <div class="row"><div class="key">Резерв</div><div class="val">${e(trader.reserved_usdt || 0)} USDT</div></div>
-    <div class="row"><div class="key">Просрочек</div><div class="val">${e(trader.missed_confirmations || 0)}</div></div>
-    <div class="row"><div class="key">Причина</div><div class="val">${e(trader.pause_reason || trader.freeze_reason || "-")}</div></div>
-  `;
-  return trader;
-}
-
-async function loadOrders(silent=false){
-  const data = await get(`/api/trader/${traderId()}/orders`);
-  out(data);
-
-  const orders = (data.orders || []).sort((a,b)=>{
-    const p = {waiting:1, paid:2, rejected:3, expired:4, cancelled:5};
-    return (p[a.status]||9)-(p[b.status]||9);
-  });
-
-  const waitingOrders = orders.filter(o => o.status === "waiting");
-  document.getElementById("waiting").textContent = waitingOrders.length;
-
-  const newIds = new Set(waitingOrders.map(o => o.id));
-  if(!silent){
-    for(const id of newIds){
-      if(!lastWaitingIds.has(id)) beep();
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
-  }
-  lastWaitingIds = newIds;
 
-  const box = document.getElementById("ordersBox");
-  if(!orders.length){
-    box.innerHTML = '<div class="empty">Заявок пока нет</div>';
-    return orders;
-  }
+    :root {
+      --bg: #050816;
+      --panel: #0d1324;
+      --panel2: #111a2e;
+      --panel3: #08111f;
+      --line: rgba(255,255,255,.08);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --orange: #f59e0b;
+      --purple: #7c3aed;
+      --cyan: #06b6d4;
+      --shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
 
-  box.innerHTML = orders.map(o => `
-    <div class="order">
-      <div class="row"><div class="key">Order</div><div class="val">${e(o.id)}</div></div>
-      <div class="row"><div class="key">Сумма</div><div class="val">${e(o.amount_uah)} UAH</div></div>
-      <div class="row"><div class="key">В USDT</div><div class="val">${e(o.amount_usdt)} USDT</div></div>
-      <div class="row"><div class="key">Курс</div><div class="val">${e(o.usdt_rate_uah)}</div></div>
-      <div class="row"><div class="key">Статус</div><div class="val">${badge(o.status)}</div></div>
-      <div class="row"><div class="key">Осталось</div><div class="val">${o.status === "waiting" ? e(timeLeft(o.expires_at)) : "-"}</div></div>
-      <div class="row"><div class="key">Банк</div><div class="val">${e(o.bank)}</div></div>
-      <div class="row"><div class="key">Карта</div><div class="val">${e(o.card_number)}</div></div>
-      <div class="row"><div class="key">Владелец</div><div class="val">${e(o.card_holder)}</div></div>
-      <div class="row"><div class="key">Клиент</div><div class="val">${e(o.client_name || "-")}</div></div>
-      <div class="row"><div class="key">Профит</div><div class="val">${e(o.trader_profit_uah)} UAH / ${e(o.trader_profit_usdt)} USDT</div></div>
-      <div class="row"><div class="key">Квитанция</div><div class="val">${o.receipt_url ? `<a href="${e(o.receipt_url)}" target="_blank">Открыть чек</a>` : "Нет"}</div></div>
-      ${o.status === "waiting" ? `
-        <div class="actions">
-          <button class="btn green" onclick="confirmOrder('${e(o.id)}')">Подтвердить</button>
-          <button class="btn red" onclick="rejectOrder('${e(o.id)}')">Отклонить</button>
-        </div>
-      ` : ""}
-    </div>
-  `).join("");
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(37,99,235,.22), transparent 28%),
+        radial-gradient(circle at top right, rgba(124,58,237,.18), transparent 30%),
+        linear-gradient(180deg, #050816 0%, #070b14 100%);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
 
-  return orders;
-}
+    .app {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 14px;
+      padding-bottom: 100px;
+    }
 
-async function loadCards(){
-  const data = await get(`/api/trader/${traderId()}/cards`);
-  const cards = data.cards || [];
-  const box = document.getElementById("cardsBox");
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      margin: -14px -14px 14px;
+      padding: 14px;
+      background: rgba(5,8,22,.88);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--line);
+    }
 
-  const turnover = cards.reduce((s,c)=>s+Number(c.turnover_today||0),0);
-  document.getElementById("turnover").textContent = turnover;
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
 
-  if(!cards.length){
-    box.innerHTML = '<div class="empty">Карт пока нет</div>';
-    return cards;
-  }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-  box.innerHTML = cards.map(c => `
-    <div class="order">
-      <div class="row"><div class="key">ID</div><div class="val">${e(c.id)}</div></div>
-      <div class="row"><div class="key">Банк</div><div class="val">${e(c.bank)}</div></div>
-      <div class="row"><div class="key">Карта</div><div class="val">${e(c.card_number)}</div></div>
-      <div class="row"><div class="key">Владелец</div><div class="val">${e(c.card_holder)}</div></div>
-      <div class="row"><div class="key">Лимит</div><div class="val">${e(c.min_amount)}-${e(c.max_amount)} UAH</div></div>
-      <div class="row"><div class="key">День</div><div class="val">${e(c.turnover_today || 0)} / ${e(c.daily_limit)}</div></div>
-      <div class="row"><div class="key">Платежи</div><div class="val">${e(c.payments_today || 0)} / ${e(c.max_payments_per_day)}</div></div>
-      <div class="row"><div class="key">Активна</div><div class="val">${badge(c.active ? "active" : "disabled")}</div></div>
-      <div class="row"><div class="key">Занята</div><div class="val">${c.reserved ? "Да" : "Нет"}</div></div>
-    </div>
-  `).join("");
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      font-weight: 900;
+      box-shadow: 0 12px 30px rgba(37,99,235,.25);
+    }
 
-  return cards;
-}
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1;
+    }
 
-async function confirmOrder(id){
-  if(!confirm("Подтвердить оплату " + id + "?")) return;
-  const data = await patch(`/api/admin/orders/${id}/paid`);
-  out(data);
-  await loadAll(true);
-}
+    .sub {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
 
-async function rejectOrder(id){
-  if(!confirm("Отклонить заявку " + id + "?")) return;
-  const data = await patch(`/api/admin/orders/${id}/reject`);
-  out(data);
-  await loadAll(true);
-}
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 12px;
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,.12);
+    }
 
-async function topup(){
-  const wallet = await loadWallet();
+    .status-online {
+      background: rgba(34,197,94,.12);
+      color: #86efac;
+      border-color: rgba(34,197,94,.25);
+    }
 
-  alert(
-    "Кошелёк для пополнения:\\n" +
-    wallet.wallet.network + "\\n" +
-    wallet.wallet.address
-  );
+    .status-pause {
+      background: rgba(245,158,11,.12);
+      color: #fde68a;
+      border-color: rgba(245,158,11,.25);
+    }
 
-  const amount = prompt("Сумма пополнения USDT:");
-  if(!amount) return;
+    .status-offline,
+    .status-frozen {
+      background: rgba(239,68,68,.12);
+      color: #fecaca;
+      border-color: rgba(239,68,68,.25);
+    }
 
-  const txid = prompt("Вставь TXID транзакции:");
-  if(!txid) return;
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
 
-  const data = await post(`/api/trader/${traderId()}/topups`, {
-    amount_usdt: Number(amount),
-    txid,
-    network: wallet.wallet.network
-  });
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
 
-  out(data);
-  alert("Заявка на пополнение отправлена админу");
-}
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 10px;
+      color: white;
+      font-weight: 900;
+      font-size: 14px;
+      cursor: pointer;
+      box-shadow: 0 10px 22px rgba(0,0,0,.22);
+    }
 
-async function loadAll(silent=false){
-  await loadWallet();
-  await loadProfile();
-  await loadOrders(silent);
-  await loadCards();
-}
+    button:active {
+      transform: scale(.98);
+    }
 
-setInterval(()=>loadAll(false), 5000);
-loadAll(true);
-</script>
-</body>
-</html>
+    .btn-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+    .btn-green { background: linear-gradient(135deg, #16a34a, #15803d); }
+    .btn-orange { background: linear-gradient(135deg, #f59e0b, #b45309); }
+    .btn-red { background: linear-gradient(135deg, #dc2626, #991b1b); }
+    .btn-gray { background: linear-gradient(135deg, #334155, #1e293b); }
+    .btn-purple { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+    .btn-cyan { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .tab {
+      flex: 0 0 auto;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+      padding: 10px 13px;
+      border-radius: 14px;
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .tab.active {
+      color: white;
+      background: linear-gradient(135deg, rgba(37,99,235,.95), rgba(124,58,237,.9));
+      border-color: rgba(37,99,235,.6);
+    }
+
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
