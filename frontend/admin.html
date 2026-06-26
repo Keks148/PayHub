@@ -504,3 +504,221 @@ Dashboard
 </div>
 
 <div class="app">
+<section id="dashboard" class="page active">
+
+  <div class="section-title">
+    <div>
+      <h2>Dashboard</h2>
+      <span>Общий обзор платформы</span>
+    </div>
+  </div>
+
+  <div class="cards-grid" id="statsBox"></div>
+
+</section>
+
+<section id="orders" class="page">
+
+  <div class="section-title">
+    <div>
+      <h2>Заявки</h2>
+      <span>Все платежные заявки</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="list" id="ordersBox"></div>
+  </div>
+
+</section>
+
+<section id="traders" class="page">
+
+  <div class="section-title">
+    <div>
+      <h2>Трейдеры</h2>
+      <span>Баланс, статус и лимиты</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="list" id="tradersBox"></div>
+  </div>
+
+</section>
+
+<section id="cards" class="page">
+
+  <div class="section-title">
+    <div>
+      <h2>Карты</h2>
+      <span>Реквизиты трейдеров</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="list" id="cardsBox"></div>
+  </div>
+
+</section>
+
+<section id="events" class="page">
+
+  <div class="section-title">
+    <div>
+      <h2>Журнал событий</h2>
+      <span>Последние действия системы</span>
+    </div>
+  </div>
+
+  <div class="panel" id="eventsBox"></div>
+
+</section>
+
+<div class="panel">
+  <div class="section-title">
+    <div>
+      <h2>Ответ сервера</h2>
+      <span>Для проверки API</span>
+    </div>
+  </div>
+
+  <pre id="apiOutput">Загрузка...</pre>
+</div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function out(data){
+  $("apiOutput").textContent =
+    typeof data === "string" ? data : JSON.stringify(data, null, 2);
+}
+
+function safe(v){
+  return String(v ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;");
+}
+
+async function api(url, method = "GET", body = null){
+  const options = {
+    method,
+    headers: {
+      "Content-Type": "application/json"
+    }
+  };
+
+  if(body){
+    options.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+
+  if(!res.ok){
+    throw new Error(data.message || data.reason || "API error");
+  }
+
+  return data;
+}
+
+function openTab(id, el){
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+
+  $(id).classList.add("active");
+  el.classList.add("active");
+}
+
+function renderStats(stats){
+  const data = [
+    ["Всего заявок", stats.total_orders || 0, "Общее количество"],
+    ["В ожидании", stats.waiting_orders || 0, "Активные сделки"],
+    ["Оплачено", stats.paid_orders || 0, "Успешные платежи"],
+    ["Оборот UAH", stats.turnover_uah || 0, "Подтвержденный оборот"],
+    ["Профит UAH", stats.trader_profit_uah || 0, "Доход трейдеров"],
+    ["Профит USDT", stats.trader_profit_usdt || 0, "Доход в USDT"],
+    ["Трейдеры", stats.traders_count || 0, "Всего в системе"],
+    ["Активные карты", stats.active_cards || 0, "Готовы принимать"]
+  ];
+
+  $("statsBox").innerHTML = data.map(item => `
+    <div class="stat-card">
+      <div class="stat-title">${safe(item[0])}</div>
+      <div class="stat-value">${safe(item[1])}</div>
+      <div class="stat-bottom">${safe(item[2])}</div>
+    </div>
+  `).join("");
+}
+
+function renderOrders(orders){
+  if(!orders.length){
+    $("ordersBox").innerHTML = `<div class="item">Заявок пока нет</div>`;
+    return;
+  }
+
+  $("ordersBox").innerHTML = orders.map(o => `
+    <div class="item">
+      <div class="item-top">
+        <div class="item-title">${safe(o.amount_uah)} UAH</div>
+        <div class="badge ${safe(o.status)}">${safe(o.status)}</div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info">
+          <small>ID заявки</small>
+          <strong>${safe(o.id)}</strong>
+        </div>
+
+        <div class="info">
+          <small>Трейдер</small>
+          <strong>${safe(o.trader_name || o.trader_id)}</strong>
+        </div>
+
+        <div class="info">
+          <small>Карта</small>
+          <strong>${safe(o.bank)} ${safe(o.card_number)}</strong>
+        </div>
+
+        <div class="info">
+          <small>USDT</small>
+          <strong>${safe(o.amount_usdt)}</strong>
+        </div>
+
+        <div class="info">
+          <small>Профит</small>
+          <strong>${safe(o.trader_profit_usdt)} USDT</strong>
+        </div>
+
+        <div class="info">
+          <small>Создано</small>
+          <strong>${safe(o.created_at)}</strong>
+        </div>
+      </div>
+
+      ${o.receipt_url ? `
+        <div class="buttons">
+          <button class="btn-cyan" onclick="window.open('${safe(o.receipt_url)}','_blank')">
+            🧾 Открыть чек
+          </button>
+        </div>
+      ` : ""}
+
+      ${o.status === "waiting" ? `
+        <div class="buttons">
+          <button class="btn-green" onclick="confirmOrder('${safe(o.trader_id)}','${safe(o.id)}')">
+            ✅ Подтвердить
+          </button>
+
+          <button class="btn-red" onclick="rejectOrder('${safe(o.trader_id)}','${safe(o.id)}')">
+            ❌ Отклонить
+          </button>
+        </div>
+      ` : ""}
+    </div>
+  `).join("");
+}
