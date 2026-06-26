@@ -217,3 +217,290 @@
       color: var(--muted);
       font-size: 13px;
     }
+    .cards-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+      gap:14px;
+      margin-bottom:22px;
+    }
+
+    .stat-card{
+      background:linear-gradient(180deg,var(--panel),var(--panel2));
+      border:1px solid var(--line);
+      border-radius:22px;
+      padding:18px;
+      position:relative;
+      overflow:hidden;
+      box-shadow:var(--shadow);
+    }
+
+    .stat-card::before{
+      content:"";
+      position:absolute;
+      right:-30px;
+      top:-30px;
+      width:120px;
+      height:120px;
+      border-radius:50%;
+      background:rgba(255,255,255,.04);
+    }
+
+    .stat-title{
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .stat-value{
+      margin-top:10px;
+      font-size:34px;
+      font-weight:900;
+    }
+
+    .stat-bottom{
+      margin-top:12px;
+      color:#4ade80;
+      font-size:13px;
+    }
+
+    .panel{
+      background:linear-gradient(180deg,var(--panel),var(--panel2));
+      border-radius:22px;
+      border:1px solid var(--line);
+      padding:18px;
+      margin-bottom:18px;
+      box-shadow:var(--shadow);
+    }
+
+    .list{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .item{
+      background:var(--panel3);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:18px;
+      padding:16px;
+    }
+
+    .item-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:12px;
+    }
+
+    .item-title{
+      font-size:18px;
+      font-weight:900;
+    }
+
+    .badge{
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:900;
+    }
+
+    .online{background:#064e3b;color:#86efac;}
+    .pause{background:#78350f;color:#fde68a;}
+    .offline{background:#374151;color:#d1d5db;}
+    .frozen{background:#7f1d1d;color:#fecaca;}
+
+    .waiting{
+      background:#78350f;
+      color:#fde68a;
+    }
+
+    .paid{
+      background:#064e3b;
+      color:#86efac;
+    }
+
+    .cancelled,
+    .rejected,
+    .expired{
+      background:#7f1d1d;
+      color:#fecaca;
+    }
+
+    .info-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+
+    .info{
+      background:rgba(255,255,255,.03);
+      border-radius:14px;
+      padding:10px;
+    }
+
+    .info small{
+      display:block;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+
+    .info strong{
+      font-size:16px;
+    }
+
+    .buttons{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:16px;
+    }
+
+    .buttons button{
+      flex:1;
+      min-width:120px;
+    }
+
+    .event{
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+      padding:12px 0;
+      border-bottom:1px solid rgba(255,255,255,.05);
+    }
+
+    .event:last-child{
+      border-bottom:0;
+    }
+
+    .dot{
+      width:14px;
+      height:14px;
+      border-radius:50%;
+      background:#2563eb;
+      margin-top:5px;
+    }
+
+    .event-text{
+      flex:1;
+    }
+
+    .event-title{
+      font-weight:800;
+      margin-bottom:4px;
+    }
+
+    .event-time{
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    pre{
+      background:#020617;
+      border-radius:16px;
+      padding:16px;
+      overflow:auto;
+      color:#cbd5e1;
+      font-size:13px;
+      max-height:300px;
+    }
+
+    @media(max-width:700px){
+
+      .brand-row{
+        flex-direction:column;
+        align-items:flex-start;
+      }
+
+      .quick-actions{
+        grid-template-columns:1fr 1fr;
+      }
+
+      .info-grid{
+        grid-template-columns:1fr;
+      }
+
+    }
+
+  </style>
+</head>
+
+<body>
+
+<div class="topbar">
+
+<div class="brand-row">
+
+<div class="brand">
+
+<div class="logo">
+₽
+</div>
+
+<div>
+
+<h1>PayHub Admin</h1>
+
+<div class="sub">
+Commercial P2P Processing Platform
+</div>
+
+</div>
+
+</div>
+
+<div class="live">
+
+<div class="pulse"></div>
+
+ONLINE
+
+</div>
+
+</div>
+
+<div class="quick-actions">
+
+<button class="btn-blue" onclick="refreshAll()">
+🔄 Обновить
+</button>
+
+<button class="btn-orange" onclick="createTestOrder()">
+➕ Тест заявка
+</button>
+
+<button class="btn-purple" onclick="createTrader()">
+👤 Трейдер
+</button>
+
+<button class="btn-green" onclick="createCard()">
+💳 Карта
+</button>
+
+</div>
+
+<div class="tabs">
+
+<div class="tab active" onclick="openTab('dashboard',this)">
+Dashboard
+</div>
+
+<div class="tab" onclick="openTab('orders',this)">
+Заявки
+</div>
+
+<div class="tab" onclick="openTab('traders',this)">
+Трейдеры
+</div>
+
+<div class="tab" onclick="openTab('cards',this)">
+Карты
+</div>
+
+<div class="tab" onclick="openTab('events',this)">
+Журнал
+</div>
+
+</div>
+
+</div>
+
+<div class="app">
