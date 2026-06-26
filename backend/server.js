@@ -1,10 +1,13 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DATA_DIR = path.join(__dirname, "data");
+const STORE_FILE = path.join(DATA_DIR, "store.json");
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "../frontend")));
 
 const CONFIG = {
@@ -18,7 +21,7 @@ const CONFIG = {
   }
 };
 
-const store = {
+const defaultStore = {
   traders: [
     {
       id: "trader_1",
@@ -50,8 +53,51 @@ const store = {
     }
   ],
   orders: [],
-  topups: []
+  topups: [],
+  withdrawals: []
 };
+
+function cloneDefaultStore() {
+  return JSON.parse(JSON.stringify(defaultStore));
+}
+
+function loadStore() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+    if (!fs.existsSync(STORE_FILE)) {
+      const freshStore = cloneDefaultStore();
+      fs.writeFileSync(STORE_FILE, JSON.stringify(freshStore, null, 2));
+      return freshStore;
+    }
+
+    const loaded = JSON.parse(fs.readFileSync(STORE_FILE, "utf8"));
+
+    return {
+      ...cloneDefaultStore(),
+      ...loaded,
+      traders: Array.isArray(loaded.traders) ? loaded.traders : [],
+      cards: Array.isArray(loaded.cards) ? loaded.cards : [],
+      orders: Array.isArray(loaded.orders) ? loaded.orders : [],
+      topups: Array.isArray(loaded.topups) ? loaded.topups : [],
+      withdrawals: Array.isArray(loaded.withdrawals) ? loaded.withdrawals : []
+    };
+  } catch (error) {
+    console.error("Failed to load store.json:", error);
+    return cloneDefaultStore();
+  }
+}
+
+const store = loadStore();
+
+function saveStore() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(STORE_FILE, JSON.stringify(store, null, 2));
+  } catch (error) {
+    console.error("Failed to save store.json:", error);
+  }
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -197,6 +243,7 @@ function expireOldOrders() {
     }
 
     releaseCard(order.card_id);
+    saveStore();
   });
 }
 
@@ -332,6 +379,7 @@ app.post("/api/merchant/create-order", (req, res) => {
 
   card.reserved = true;
   card.current_order_id = order.id;
+  saveStore();
 
   res.json({
     success: true,
@@ -376,6 +424,7 @@ app.post("/api/merchant/orders/:id/receipt", (req, res) => {
 
   order.receipt_url = receipt_url;
   order.receipt_uploaded_at = nowIso();
+  saveStore();
 
   res.json({
     success: true,
@@ -470,6 +519,7 @@ app.post("/api/merchant/orders/:id/cancel", (req, res) => {
   }
 
   releaseCard(order.card_id);
+  saveStore();
 
   res.json({
     success: true,
@@ -549,6 +599,7 @@ app.patch("/api/admin/orders/:id/receipt", (req, res) => {
 
   order.receipt_url = receipt_url;
   order.receipt_uploaded_at = nowIso();
+  saveStore();
 
   res.json({
     success: true,
@@ -593,6 +644,8 @@ app.patch("/api/admin/orders/:id/paid", (req, res) => {
     card.turnover_today = Number(card.turnover_today || 0) + Number(order.amount_uah || 0);
   }
 
+  saveStore();
+
   res.json({
     success: true,
     message: "Order marked as paid",
@@ -627,6 +680,7 @@ app.patch("/api/admin/orders/:id/reject", (req, res) => {
   }
 
   releaseCard(order.card_id);
+  saveStore();
 
   res.json({
     success: true,
@@ -659,6 +713,7 @@ app.post("/api/admin/traders/create", (req, res) => {
 
   updateTraderStatus(trader);
   store.traders.push(trader);
+  saveStore();
 
   res.json({
     success: true,
@@ -686,6 +741,8 @@ app.patch("/api/admin/traders/:id/unpause", (req, res) => {
     trader.freeze_reason = null;
     trader.missed_confirmations = 0;
   }
+
+  saveStore();
 
   res.json({
     success: true,
@@ -732,6 +789,7 @@ app.post("/api/admin/cards/create", (req, res) => {
   };
 
   store.cards.push(card);
+  saveStore();
 
   res.json({
     success: true,
@@ -751,6 +809,7 @@ app.patch("/api/admin/cards/:id/toggle", (req, res) => {
   }
 
   card.active = !card.active;
+  saveStore();
 
   res.json({
     success: true,
@@ -801,6 +860,7 @@ app.post("/api/trader/:id/topups", (req, res) => {
   };
 
   store.topups.unshift(topup);
+  saveStore();
 
   res.json({
     success: true,
@@ -845,6 +905,7 @@ app.patch("/api/admin/topups/:id/approve", (req, res) => {
 
   topup.status = "approved";
   topup.approved_at = nowIso();
+  saveStore();
 
   res.json({
     success: true,
@@ -866,11 +927,141 @@ app.patch("/api/admin/topups/:id/reject", (req, res) => {
 
   topup.status = "rejected";
   topup.rejected_at = nowIso();
+  saveStore();
 
   res.json({
     success: true,
     message: "Topup rejected",
     topup
+  });
+});
+
+
+/* WITHDRAWALS */
+
+app.get("/api/admin/withdrawals", (req, res) => {
+  res.json({
+    success: true,
+    count: store.withdrawals.length,
+    withdrawals: store.withdrawals
+  });
+});
+
+app.post("/api/trader/:id/withdrawals", (req, res) => {
+  const trader = getTraderById(req.params.id);
+
+  if (!trader) {
+    return res.status(404).json({
+      success: false,
+      message: "Trader not found"
+    });
+  }
+
+  const { amount_usdt, wallet_address, network = "TRC20" } = req.body || {};
+  const amount = Number(amount_usdt || 0);
+
+  if (!amount || amount <= 0 || !wallet_address) {
+    return res.status(400).json({
+      success: false,
+      message: "amount_usdt and wallet_address are required"
+    });
+  }
+
+  if (amount > Number(trader.earned_usdt || 0)) {
+    return res.status(400).json({
+      success: false,
+      message: "Not enough earned balance"
+    });
+  }
+
+  trader.earned_usdt = round2(Number(trader.earned_usdt || 0) - amount);
+
+  const withdrawal = {
+    id: makeId("withdrawal"),
+    trader_id: trader.id,
+    trader_name: trader.name,
+    amount_usdt: amount,
+    wallet_address,
+    network,
+    status: "pending",
+    created_at: nowIso(),
+    approved_at: null,
+    rejected_at: null,
+    txid: null
+  };
+
+  store.withdrawals.unshift(withdrawal);
+  saveStore();
+
+  res.json({
+    success: true,
+    message: "Withdrawal request created",
+    trader,
+    withdrawal
+  });
+});
+
+app.patch("/api/admin/withdrawals/:id/approve", (req, res) => {
+  const withdrawal = store.withdrawals.find(w => w.id === req.params.id);
+
+  if (!withdrawal) {
+    return res.status(404).json({
+      success: false,
+      message: "Withdrawal not found"
+    });
+  }
+
+  if (withdrawal.status !== "pending") {
+    return res.status(400).json({
+      success: false,
+      message: `Withdrawal already ${withdrawal.status}`
+    });
+  }
+
+  const { txid = null } = req.body || {};
+  withdrawal.status = "approved";
+  withdrawal.approved_at = nowIso();
+  withdrawal.txid = txid;
+  saveStore();
+
+  res.json({
+    success: true,
+    message: "Withdrawal approved",
+    withdrawal
+  });
+});
+
+app.patch("/api/admin/withdrawals/:id/reject", (req, res) => {
+  const withdrawal = store.withdrawals.find(w => w.id === req.params.id);
+
+  if (!withdrawal) {
+    return res.status(404).json({
+      success: false,
+      message: "Withdrawal not found"
+    });
+  }
+
+  if (withdrawal.status !== "pending") {
+    return res.status(400).json({
+      success: false,
+      message: `Withdrawal already ${withdrawal.status}`
+    });
+  }
+
+  const trader = getTraderById(withdrawal.trader_id);
+  if (trader) {
+    trader.earned_usdt = round2(Number(trader.earned_usdt || 0) + Number(withdrawal.amount_usdt || 0));
+  }
+
+  withdrawal.status = "rejected";
+  withdrawal.rejected_at = nowIso();
+  saveStore();
+
+  res.json({
+    success: true,
+    message: "Withdrawal rejected and earned balance returned",
+    trader,
+    withdrawal
   });
 });
 
