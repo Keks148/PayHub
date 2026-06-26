@@ -469,3 +469,400 @@ app.get("/health", (req, res) => {
     timestamp: nowIso()
   });
 });
+/* MERCHANT / CLIENT API */
+
+app.post("/api/merchant/create-payment", (req, res) => {
+  expireOldOrders();
+
+  const body = req.body || {};
+  const amountUah = Number(body.amount_uah || body.amount || 0);
+
+  if (!amountUah || amountUah <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: "amount_uah is required"
+    });
+  }
+
+  const assignment = findBestAssignment(amountUah);
+
+  if (!assignment) {
+    const reason = getNoAssignmentReason(amountUah);
+
+    addEvent("order_no_assignment", `No trader available for ${amountUah} UAH`, {
+      amount_uah: amountUah,
+      reason
+    });
+
+    saveStore();
+
+    return res.status(409).json({
+      success: false,
+      message: "No available trader/card",
+      reason
+    });
+  }
+
+  const trader = assignment.trader;
+  const card = assignment.card;
+  const amountUsdt = round2(amountUah / CONFIG.usdt_rate_uah);
+
+  const order = {
+    id: makeId("order"),
+    payment_id: makeId("payment"),
+    merchant_order_id: body.order_id || body.merchant_order_id || null,
+    merchant_id: body.merchant_id || "merchant_1",
+    client_id: body.client_id || null,
+    amount_uah: amountUah,
+    amount_usdt: amountUsdt,
+    usdt_rate_uah: CONFIG.usdt_rate_uah,
+    trader_percent: Number(trader.percent || 4.5),
+    trader_profit_uah: round2(amountUah * (Number(trader.percent || 4.5) / 100)),
+    trader_profit_usdt: round2((amountUah * (Number(trader.percent || 4.5) / 100)) / CONFIG.usdt_rate_uah),
+    status: "waiting",
+    trader_id: trader.id,
+    trader_name: trader.name,
+    card_id: card.id,
+    bank: card.bank,
+    card_number: card.card_number,
+    card_holder: card.card_holder,
+    receipt_url: null,
+    receipt_uploaded_at: null,
+    created_at: nowIso(),
+    expires_at: new Date(Date.now() + CONFIG.order_lifetime_minutes * 60 * 1000).toISOString(),
+    paid_at: null,
+    rejected_at: null,
+    cancelled_at: null,
+    expired_at: null
+  };
+
+  reserveTraderBalance(trader, amountUsdt);
+
+  card.reserved = true;
+  card.current_order_id = order.id;
+
+  trader.last_order_at = nowIso();
+  trader.active_orders = getActiveOrdersCount(trader.id) + 1;
+
+  store.orders.unshift(order);
+
+  addEvent("order_assigned", `Order ${order.id} assigned to ${trader.name}`, {
+    order_id: order.id,
+    trader_id: trader.id,
+    trader_name: trader.name,
+    card_id: card.id,
+    amount_uah: amountUah
+  });
+
+  saveStore();
+
+  res.json({
+    success: true,
+    payment: publicOrder(order)
+  });
+});
+
+app.get("/api/merchant/payment/:id", (req, res) => {
+  expireOldOrders();
+
+  const order = getOrderById(req.params.id);
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: "Payment not found"
+    });
+  }
+
+  res.json({
+    success: true,
+    payment: publicOrder(order)
+  });
+});
+
+app.post("/api/merchant/payment/:id/receipt", (req, res) => {
+  expireOldOrders();
+
+  const order = getOrderById(req.params.id);
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: "Payment not found"
+    });
+  }
+
+  if (order.status !== "waiting") {
+    return res.status(400).json({
+      success: false,
+      message: "Receipt can be uploaded only for waiting order"
+    });
+  }
+
+  try {
+    const receipt = attachReceipt(req, order);
+
+    if (!receipt) {
+      return res.status(400).json({
+        success: false,
+        message: "receipt_url or receipt_base64 is required"
+      });
+    }
+
+    addEvent("receipt_uploaded", `Receipt uploaded for order ${order.id}`, {
+      order_id: order.id,
+      receipt_url: order.receipt_url
+    });
+
+    saveStore();
+
+    res.json({
+      success: true,
+      payment: publicOrder(order)
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to upload receipt"
+    });
+  }
+});
+
+app.post("/api/merchant/payment/:id/cancel", (req, res) => {
+  expireOldOrders();
+
+  const order = getOrderById(req.params.id);
+
+  if (!order) {
+    return res.status(404).json({
+      success: false,
+      message: "Payment not found"
+    });
+  }
+
+  if (order.status !== "waiting") {
+    return res.status(400).json({
+      success: false,
+      message: "Only waiting order can be cancelled"
+    });
+  }
+
+  const trader = getTraderById(order.trader_id);
+
+  order.status = "cancelled";
+  order.cancelled_at = nowIso();
+
+  if (trader) {
+    releaseTraderReserve(trader, order.amount_usdt, true);
+    trader.active_orders = getActiveOrdersCount(trader.id);
+  }
+
+  releaseCard(order.card_id);
+
+  addEvent("order_cancelled", `Order ${order.id} cancelled by merchant`, {
+    order_id: order.id,
+    trader_id: order.trader_id
+  });
+
+  saveStore();
+
+  res.json({
+    success: true,
+    payment: publicOrder(order)
+  });
+});
+
+/* TRADER API */
+
+app.get("/api/trader/:trader_id/profile", (req, res) => {
+  expireOldOrders();
+
+  const trader = getTraderById(req.params.trader_id);
+
+  if (!trader) {
+    return res.status(404).json({
+      success: false,
+      message: "Trader not found"
+    });
+  }
+
+  normalizeTrader(trader);
+  updateTraderStatus(trader);
+
+  saveStore();
+
+  res.json({
+    success: true,
+    trader
+  });
+});
+
+app.post("/api/trader/:trader_id/status", (req, res) => {
+  const trader = getTraderById(req.params.trader_id);
+
+  if (!trader) {
+    return res.status(404).json({
+      success: false,
+      message: "Trader not found"
+    });
+  }
+
+  const status = req.body.status;
+
+  const allowed = ["online", "pause", "offline"];
+
+  if (!allowed.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: "Allowed statuses: online, pause, offline"
+    });
+  }
+
+  trader.status = status;
+  trader.pause_reason = null;
+  trader.freeze_reason = null;
+
+  updateTraderStatus(trader);
+
+  addEvent("trader_status_changed", `Trader ${trader.name} changed status to ${trader.status}`, {
+    trader_id: trader.id,
+    status: trader.status
+  });
+
+  saveStore();
+
+  res.json({
+    success: true,
+    trader
+  });
+});
+
+app.get("/api/trader/:trader_id/orders", (req, res) => {
+  expireOldOrders();
+
+  const trader = getTraderById(req.params.trader_id);
+
+  if (!trader) {
+    return res.status(404).json({
+      success: false,
+      message: "Trader not found"
+    });
+  }
+
+  normalizeTrader(trader);
+
+  const orders = store.orders.filter(o => o.trader_id === trader.id);
+
+  res.json({
+    success: true,
+    trader,
+    orders
+  });
+});
+
+app.post("/api/trader/:trader_id/orders/:order_id/confirm", (req, res) => {
+  expireOldOrders();
+
+  const trader = getTraderById(req.params.trader_id);
+  const order = getOrderById(req.params.order_id);
+
+  if (!trader || !order || order.trader_id !== trader.id) {
+    return res.status(404).json({
+      success: false,
+      message: "Order not found for this trader"
+    });
+  }
+
+  if (order.status !== "waiting") {
+    return res.status(400).json({
+      success: false,
+      message: "Only waiting order can be confirmed"
+    });
+  }
+
+  const card = getCardById(order.card_id);
+
+  order.status = "paid";
+  order.paid_at = nowIso();
+
+  trader.reserved_usdt = round2(Math.max(0, Number(trader.reserved_usdt || 0) - Number(order.amount_usdt || 0)));
+  trader.earned_usdt = round2(Number(trader.earned_usdt || 0) + Number(order.trader_profit_usdt || 0));
+  trader.missed_confirmations = 0;
+  trader.active_orders = getActiveOrdersCount(trader.id);
+
+  if (card) {
+    card.payments_today = Number(card.payments_today || 0) + 1;
+    card.turnover_today = round2(Number(card.turnover_today || 0) + Number(order.amount_uah || 0));
+    card.reserved = false;
+    card.current_order_id = null;
+
+    if (
+      Number(card.payments_today || 0) >= Number(card.max_payments_per_day || 0) ||
+      Number(card.turnover_today || 0) >= Number(card.daily_limit || 0)
+    ) {
+      card.active = false;
+      card.disabled_reason = "Daily limit reached";
+    }
+  }
+
+  updateTraderStatus(trader);
+
+  addEvent("order_confirmed", `Trader ${trader.name} confirmed order ${order.id}`, {
+    order_id: order.id,
+    trader_id: trader.id,
+    amount_uah: order.amount_uah,
+    profit_usdt: order.trader_profit_usdt
+  });
+
+  saveStore();
+
+  res.json({
+    success: true,
+    payment: publicOrder(order),
+    trader
+  });
+});
+
+app.post("/api/trader/:trader_id/orders/:order_id/reject", (req, res) => {
+  expireOldOrders();
+
+  const trader = getTraderById(req.params.trader_id);
+  const order = getOrderById(req.params.order_id);
+
+  if (!trader || !order || order.trader_id !== trader.id) {
+    return res.status(404).json({
+      success: false,
+      message: "Order not found for this trader"
+    });
+  }
+
+  if (order.status !== "waiting") {
+    return res.status(400).json({
+      success: false,
+      message: "Only waiting order can be rejected"
+    });
+  }
+
+  order.status = "rejected";
+  order.rejected_at = nowIso();
+  order.reject_reason = req.body.reason || "Rejected by trader";
+
+  releaseTraderReserve(trader, order.amount_usdt, true);
+  releaseCard(order.card_id);
+
+  trader.active_orders = getActiveOrdersCount(trader.id);
+
+  addEvent("order_rejected", `Trader ${trader.name} rejected order ${order.id}`, {
+    order_id: order.id,
+    trader_id: trader.id,
+    reason: order.reject_reason
+  });
+
+  saveStore();
+
+  res.json({
+    success: true,
+    payment: publicOrder(order),
+    trader
+  });
+});
