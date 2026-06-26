@@ -6,9 +6,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+const RECEIPTS_DIR = path.join(UPLOAD_DIR, "receipts");
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "../frontend")));
+app.use("/uploads", express.static(UPLOAD_DIR));
 
 const CONFIG = {
   usdt_rate_uah: 40,
@@ -31,7 +34,11 @@ const defaultStore = {
       available_usdt: 374.3,
       reserved_usdt: 0,
       earned_usdt: 0,
-      missed_confirmations: 0
+      missed_confirmations: 0,
+      priority: 0,
+      max_active_orders: 3,
+      active_orders: 0,
+      last_order_at: null
     }
   ],
   cards: [
@@ -54,7 +61,8 @@ const defaultStore = {
   ],
   orders: [],
   topups: [],
-  withdrawals: []
+  withdrawals: [],
+  events: []
 };
 
 function cloneDefaultStore() {
@@ -80,7 +88,8 @@ function loadStore() {
       cards: Array.isArray(loaded.cards) ? loaded.cards : [],
       orders: Array.isArray(loaded.orders) ? loaded.orders : [],
       topups: Array.isArray(loaded.topups) ? loaded.topups : [],
-      withdrawals: Array.isArray(loaded.withdrawals) ? loaded.withdrawals : []
+      withdrawals: Array.isArray(loaded.withdrawals) ? loaded.withdrawals : [],
+      events: Array.isArray(loaded.events) ? loaded.events : []
     };
   } catch (error) {
     console.error("Failed to load store.json:", error);
@@ -111,6 +120,26 @@ function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
+function addEvent(type, message, data = {}) {
+  if (!Array.isArray(store.events)) store.events = [];
+
+  const event = {
+    id: makeId("event"),
+    type,
+    message,
+    data,
+    created_at: nowIso()
+  };
+
+  store.events.unshift(event);
+
+  if (store.events.length > 500) {
+    store.events = store.events.slice(0, 500);
+  }
+
+  return event;
+}
+
 function getTraderById(id) {
   return store.traders.find(t => t.id === id);
 }
@@ -127,37 +156,109 @@ function getOrderById(id) {
   );
 }
 
+function getActiveOrdersCount(traderId) {
+  return store.orders.filter(o => o.trader_id === traderId && o.status === "waiting").length;
+}
+
+function normalizeTrader(trader) {
+  if (!trader) return null;
+
+  if (!trader.status) trader.status = "online";
+  if (trader.priority === undefined) trader.priority = 0;
+  if (trader.max_active_orders === undefined) trader.max_active_orders = 3;
+  trader.active_orders = getActiveOrdersCount(trader.id);
+  if (trader.last_order_at === undefined) trader.last_order_at = null;
+  if (trader.earned_usdt === undefined) trader.earned_usdt = 0;
+  if (trader.reserved_usdt === undefined) trader.reserved_usdt = 0;
+  if (trader.missed_confirmations === undefined) trader.missed_confirmations = 0;
+
+  return trader;
+}
+
+function normalizeAllTraders() {
+  store.traders.forEach(normalizeTrader);
+}
+
+normalizeAllTraders();
+
 function updateTraderStatus(trader) {
   if (!trader) return;
+
+  normalizeTrader(trader);
 
   if (Number(trader.available_usdt) <= CONFIG.min_trader_balance_usdt) {
     trader.status = "frozen";
     trader.freeze_reason = "Balance is lower than minimum";
+    return;
+  }
+
+  if (trader.status === "frozen") {
+    trader.status = "online";
+    trader.freeze_reason = null;
   }
 }
 
-function findFreeCard(amountUah) {
-  return store.cards.find(card => {
-    if (!card.active) return false;
-    if (card.reserved) return false;
+function findBestAssignment(amountUah) {
+  normalizeAllTraders();
+
+  const candidates = [];
+
+  for (const card of store.cards) {
+    if (!card.active) continue;
+    if (card.reserved) continue;
 
     const trader = getTraderById(card.trader_id);
-    if (!trader) return false;
-    if (trader.status !== "online") return false;
+    if (!trader) continue;
 
-    if (amountUah < Number(card.min_amount)) return false;
-    if (amountUah > Number(card.max_amount)) return false;
+    normalizeTrader(trader);
+    updateTraderStatus(trader);
 
-    if (Number(card.turnover_today || 0) + amountUah > Number(card.daily_limit || 0)) return false;
-    if (Number(card.payments_today || 0) >= Number(card.max_payments_per_day || 0)) return false;
+    if (trader.status !== "online") continue;
+
+    const activeOrders = getActiveOrdersCount(trader.id);
+    const maxActiveOrders = Number(trader.max_active_orders || 3);
+    if (activeOrders >= maxActiveOrders) continue;
+
+    if (amountUah < Number(card.min_amount || 0)) continue;
+    if (amountUah > Number(card.max_amount || 0)) continue;
+
+    if (Number(card.turnover_today || 0) + amountUah > Number(card.daily_limit || 0)) continue;
+    if (Number(card.payments_today || 0) >= Number(card.max_payments_per_day || 0)) continue;
 
     const amountUsdt = round2(amountUah / CONFIG.usdt_rate_uah);
-    const afterReserve = round2(Number(trader.available_usdt) - amountUsdt);
+    const afterReserve = round2(Number(trader.available_usdt || 0) - amountUsdt);
 
-    if (afterReserve < CONFIG.min_trader_balance_usdt) return false;
+    if (afterReserve < CONFIG.min_trader_balance_usdt) continue;
 
-    return true;
+    candidates.push({
+      trader,
+      card,
+      activeOrders,
+      priority: Number(trader.priority || 0),
+      lastOrderAt: trader.last_order_at ? new Date(trader.last_order_at).getTime() : 0,
+      availableUsdt: Number(trader.available_usdt || 0)
+    });
+  }
+
+  candidates.sort((a, b) => {
+    if (a.activeOrders !== b.activeOrders) return a.activeOrders - b.activeOrders;
+    if (a.priority !== b.priority) return b.priority - a.priority;
+    if (a.lastOrderAt !== b.lastOrderAt) return a.lastOrderAt - b.lastOrderAt;
+    return b.availableUsdt - a.availableUsdt;
   });
+
+  return candidates[0] || null;
+}
+
+function getNoAssignmentReason(amountUah) {
+  const onlineTraders = store.traders.filter(t => t.status === "online");
+  const activeCards = store.cards.filter(c => c.active);
+
+  if (!store.traders.length) return "No traders created";
+  if (!onlineTraders.length) return "No online traders";
+  if (!activeCards.length) return "No active cards";
+
+  return "No available card: amount limits, daily limit, active orders limit or trader balance is too low";
 }
 
 function reserveTraderBalance(trader, amountUsdt) {
@@ -211,6 +312,98 @@ function calcStats() {
   };
 }
 
+function ensureUploadDirs() {
+  if (!fs.existsSync(RECEIPTS_DIR)) {
+    fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
+  }
+}
+
+function getBaseUrl(req) {
+  const envUrl = process.env.PUBLIC_BASE_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
+
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  return `${protocol}://${host}`;
+}
+
+function saveReceiptFromBody(req, order) {
+  const body = req.body || {};
+  const receiptUrl = body.receipt_url || null;
+
+  if (receiptUrl) {
+    return {
+      receipt_url: receiptUrl,
+      receipt_file_name: null,
+      receipt_mime_type: null
+    };
+  }
+
+  const rawData = body.receipt_base64 || body.receipt_file_base64 || body.file_base64 || body.image_base64 || null;
+
+  if (!rawData) return null;
+
+  let mimeType = body.receipt_mime_type || body.mime_type || "image/jpeg";
+  let base64 = rawData;
+
+  const match = String(rawData).match(/^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i);
+  if (match) {
+    mimeType = match[1].toLowerCase().replace("image/jpg", "image/jpeg");
+    base64 = match[3];
+  }
+
+  const allowed = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp"
+  };
+
+  const ext = allowed[mimeType];
+  if (!ext) {
+    const error = new Error("Only jpg, png or webp receipt images are allowed");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const buffer = Buffer.from(String(base64), "base64");
+  const maxSizeBytes = 5 * 1024 * 1024;
+
+  if (!buffer.length || buffer.length > maxSizeBytes) {
+    const error = new Error("Receipt image is empty or larger than 5MB");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  ensureUploadDirs();
+
+  const safeOrderId = String(order.id || order.payment_id || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "");
+  const fileName = `${safeOrderId}_${Date.now()}.${ext}`;
+  const filePath = path.join(RECEIPTS_DIR, fileName);
+
+  fs.writeFileSync(filePath, buffer);
+
+  return {
+    receipt_url: `${getBaseUrl(req)}/uploads/receipts/${fileName}`,
+    receipt_file_name: fileName,
+    receipt_mime_type: mimeType
+  };
+}
+
+function attachReceipt(req, order) {
+  const savedReceipt = saveReceiptFromBody(req, order);
+
+  if (!savedReceipt) {
+    return null;
+  }
+
+  order.receipt_url = savedReceipt.receipt_url;
+  order.receipt_file_name = savedReceipt.receipt_file_name;
+  order.receipt_mime_type = savedReceipt.receipt_mime_type;
+  order.receipt_uploaded_at = nowIso();
+
+  return savedReceipt;
+}
+
 function publicOrder(order) {
   const trader = getTraderById(order.trader_id);
   return {
@@ -243,6 +436,17 @@ function expireOldOrders() {
     }
 
     releaseCard(order.card_id);
+
+    if (trader) {
+      trader.active_orders = getActiveOrdersCount(trader.id);
+    }
+
+    addEvent("order_expired", `Order ${order.id} expired`, {
+      order_id: order.id,
+      trader_id: order.trader_id,
+      amount_uah: order.amount_uah
+    });
+
     saveStore();
   });
 }
@@ -253,7 +457,7 @@ app.get("/", (req, res) => {
   res.json({
     success: true,
     project: "PayHub",
-    version: "vNext-2-receipt-balance",
+    version: "vNext-4-auto-distribution",
     config: CONFIG
   });
 });
@@ -264,884 +468,4 @@ app.get("/health", (req, res) => {
     status: "ok",
     timestamp: nowIso()
   });
-});
-
-app.get("/api/debug/store", (req, res) => {
-  res.json({
-    success: true,
-    store
-  });
-});
-
-/* MERCHANT */
-
-app.get("/api/merchant", (req, res) => {
-  res.json({
-    success: true,
-    module: "merchant",
-    version: "vNext-2",
-    endpoints: [
-      "POST /api/merchant/create-order",
-      "POST /api/merchant/orders/:id/receipt",
-      "GET /api/merchant/orders",
-      "GET /api/merchant/orders/:id",
-      "GET /api/merchant/orders/:id/status",
-      "POST /api/merchant/orders/:id/cancel"
-    ]
-  });
-});
-
-app.post("/api/merchant/create-order", (req, res) => {
-  expireOldOrders();
-
-  const {
-    amount,
-    amount_uah,
-    currency = "UAH",
-    merchant_id = "merchant_demo",
-    merchant_order_id = null,
-    client_name = null,
-    description = null,
-    callback_url = null,
-    metadata = {},
-    receipt_url = null
-  } = req.body || {};
-
-  const amountUah = Number(amount_uah || amount || 0);
-
-  if (!amountUah || amountUah <= 0) {
-    return res.status(400).json({
-      success: false,
-      message: "amount or amount_uah is required"
-    });
-  }
-
-  const card = findFreeCard(amountUah);
-
-  if (!card) {
-    return res.status(400).json({
-      success: false,
-      message: "No available card for this amount or trader balance is too low"
-    });
-  }
-
-  const trader = getTraderById(card.trader_id);
-  const amountUsdt = round2(amountUah / CONFIG.usdt_rate_uah);
-  const traderProfitUah = round2((amountUah * Number(trader.percent)) / 100);
-  const traderProfitUsdt = round2(traderProfitUah / CONFIG.usdt_rate_uah);
-
-  reserveTraderBalance(trader, amountUsdt);
-
-  const orderId = makeId("ORDER");
-
-  const order = {
-    id: orderId,
-    payment_id: makeId("ph"),
-    merchant_id,
-    merchant_order_id: merchant_order_id || orderId,
-
-    amount_uah: amountUah,
-    amount_usdt: amountUsdt,
-    reserved_usdt: amountUsdt,
-    currency,
-    usdt_rate_uah: CONFIG.usdt_rate_uah,
-
-    status: "waiting",
-
-    trader_id: trader.id,
-    trader_name: trader.name,
-    trader_percent: trader.percent,
-    trader_profit_uah: traderProfitUah,
-    trader_profit_usdt: traderProfitUsdt,
-
-    card_id: card.id,
-    bank: card.bank,
-    card_number: card.card_number,
-    card_holder: card.card_holder,
-
-    client_name,
-    description,
-    callback_url,
-    metadata,
-
-    receipt_url,
-    receipt_uploaded_at: receipt_url ? nowIso() : null,
-
-    created_at: nowIso(),
-    expires_at: new Date(Date.now() + CONFIG.order_lifetime_minutes * 60 * 1000).toISOString(),
-    paid_at: null,
-    rejected_at: null,
-    cancelled_at: null,
-    expired_at: null
-  };
-
-  store.orders.unshift(order);
-
-  card.reserved = true;
-  card.current_order_id = order.id;
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Order created",
-    payment: {
-      payment_id: order.payment_id,
-      order_id: order.id,
-      merchant_order_id: order.merchant_order_id,
-      amount_uah: order.amount_uah,
-      amount_usdt: order.amount_usdt,
-      usdt_rate_uah: order.usdt_rate_uah,
-      currency: order.currency,
-      status: order.status,
-      bank: order.bank,
-      card_number: order.card_number,
-      card_holder: order.card_holder,
-      receipt_url: order.receipt_url,
-      expires_at: order.expires_at
-    },
-    order: publicOrder(order)
-  });
-});
-
-app.post("/api/merchant/orders/:id/receipt", (req, res) => {
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  const { receipt_url } = req.body || {};
-
-  if (!receipt_url) {
-    return res.status(400).json({
-      success: false,
-      message: "receipt_url is required"
-    });
-  }
-
-  order.receipt_url = receipt_url;
-  order.receipt_uploaded_at = nowIso();
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Receipt attached",
-    order: publicOrder(order)
-  });
-});
-
-app.get("/api/merchant/orders", (req, res) => {
-  expireOldOrders();
-
-  const merchantId = req.query.merchant_id;
-  let orders = store.orders.map(publicOrder);
-
-  if (merchantId) {
-    orders = orders.filter(o => o.merchant_id === merchantId);
-  }
-
-  res.json({
-    success: true,
-    count: orders.length,
-    orders
-  });
-});
-
-app.get("/api/merchant/orders/:id", (req, res) => {
-  expireOldOrders();
-
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  res.json({
-    success: true,
-    order: publicOrder(order)
-  });
-});
-
-app.get("/api/merchant/orders/:id/status", (req, res) => {
-  expireOldOrders();
-
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  res.json({
-    success: true,
-    order_id: order.id,
-    merchant_order_id: order.merchant_order_id,
-    status: order.status,
-    amount_uah: order.amount_uah,
-    amount_usdt: order.amount_usdt,
-    usdt_rate_uah: order.usdt_rate_uah,
-    receipt_url: order.receipt_url,
-    paid_at: order.paid_at
-  });
-});
-
-app.post("/api/merchant/orders/:id/cancel", (req, res) => {
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  if (order.status !== "waiting") {
-    return res.status(400).json({
-      success: false,
-      message: `Only waiting order can be cancelled. Current status: ${order.status}`
-    });
-  }
-
-  order.status = "cancelled";
-  order.cancelled_at = nowIso();
-
-  const trader = getTraderById(order.trader_id);
-  if (trader) {
-    releaseTraderReserve(trader, order.reserved_usdt, true);
-  }
-
-  releaseCard(order.card_id);
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Order cancelled",
-    order: publicOrder(order)
-  });
-});
-
-/* ADMIN */
-
-app.get("/api/admin", (req, res) => {
-  res.json({
-    success: true,
-    module: "admin",
-    version: "vNext-2"
-  });
-});
-
-app.get("/api/admin/stats", (req, res) => {
-  expireOldOrders();
-
-  res.json({
-    success: true,
-    stats: calcStats()
-  });
-});
-
-app.get("/api/admin/orders", (req, res) => {
-  expireOldOrders();
-
-  res.json({
-    success: true,
-    count: store.orders.length,
-    orders: store.orders.map(publicOrder)
-  });
-});
-
-app.get("/api/admin/traders", (req, res) => {
-  res.json({
-    success: true,
-    count: store.traders.length,
-    traders: store.traders
-  });
-});
-
-app.get("/api/admin/cards", (req, res) => {
-  res.json({
-    success: true,
-    count: store.cards.length,
-    cards: store.cards
-  });
-});
-
-app.post("/api/admin/orders/create", (req, res) => {
-  req.url = "/api/merchant/create-order";
-  return app._router.handle(req, res, () => {});
-});
-
-app.patch("/api/admin/orders/:id/receipt", (req, res) => {
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  const { receipt_url } = req.body || {};
-
-  if (!receipt_url) {
-    return res.status(400).json({
-      success: false,
-      message: "receipt_url is required"
-    });
-  }
-
-  order.receipt_url = receipt_url;
-  order.receipt_uploaded_at = nowIso();
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Receipt updated",
-    order: publicOrder(order)
-  });
-});
-
-app.patch("/api/admin/orders/:id/paid", (req, res) => {
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  if (order.status !== "waiting") {
-    return res.status(400).json({
-      success: false,
-      message: `Only waiting order can be paid. Current status: ${order.status}`
-    });
-  }
-
-  order.status = "paid";
-  order.paid_at = nowIso();
-
-  const trader = getTraderById(order.trader_id);
-  if (trader) {
-    releaseTraderReserve(trader, order.reserved_usdt, false);
-    trader.earned_usdt = round2(Number(trader.earned_usdt || 0) + Number(order.trader_profit_usdt || 0));
-    trader.missed_confirmations = 0;
-    updateTraderStatus(trader);
-  }
-
-  const card = getCardById(order.card_id);
-  if (card) {
-    card.reserved = false;
-    card.current_order_id = null;
-    card.payments_today = Number(card.payments_today || 0) + 1;
-    card.turnover_today = Number(card.turnover_today || 0) + Number(order.amount_uah || 0);
-  }
-
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Order marked as paid",
-    order: publicOrder(order),
-    stats: calcStats()
-  });
-});
-
-app.patch("/api/admin/orders/:id/reject", (req, res) => {
-  const order = getOrderById(req.params.id);
-
-  if (!order) {
-    return res.status(404).json({
-      success: false,
-      message: "Order not found"
-    });
-  }
-
-  if (order.status !== "waiting") {
-    return res.status(400).json({
-      success: false,
-      message: `Only waiting order can be rejected. Current status: ${order.status}`
-    });
-  }
-
-  order.status = "rejected";
-  order.rejected_at = nowIso();
-
-  const trader = getTraderById(order.trader_id);
-  if (trader) {
-    releaseTraderReserve(trader, order.reserved_usdt, true);
-  }
-
-  releaseCard(order.card_id);
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Order rejected",
-    order: publicOrder(order),
-    stats: calcStats()
-  });
-});
-
-app.post("/api/admin/traders/create", (req, res) => {
-  const { name, percent, available_usdt } = req.body || {};
-
-  if (!name) {
-    return res.status(400).json({
-      success: false,
-      message: "name is required"
-    });
-  }
-
-  const trader = {
-    id: makeId("trader"),
-    name,
-    status: "online",
-    percent: Number(percent) || 4.5,
-    available_usdt: Number(available_usdt) || 0,
-    reserved_usdt: 0,
-    earned_usdt: 0,
-    missed_confirmations: 0
-  };
-
-  updateTraderStatus(trader);
-  store.traders.push(trader);
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Trader created",
-    trader
-  });
-});
-
-app.patch("/api/admin/traders/:id/unpause", (req, res) => {
-  const trader = getTraderById(req.params.id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  if (Number(trader.available_usdt) <= CONFIG.min_trader_balance_usdt) {
-    trader.status = "frozen";
-    trader.freeze_reason = "Balance is lower than minimum";
-  } else {
-    trader.status = "online";
-    trader.pause_reason = null;
-    trader.freeze_reason = null;
-    trader.missed_confirmations = 0;
-  }
-
-  saveStore();
-
-  res.json({
-    success: true,
-    trader
-  });
-});
-
-app.post("/api/admin/cards/create", (req, res) => {
-  const {
-    trader_id,
-    bank,
-    card_number,
-    card_holder,
-    min_amount,
-    max_amount,
-    daily_limit,
-    max_payments_per_day
-  } = req.body || {};
-
-  const trader = getTraderById(trader_id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  const card = {
-    id: makeId("card"),
-    trader_id,
-    bank,
-    card_number,
-    card_holder,
-    min_amount: Number(min_amount) || 1000,
-    max_amount: Number(max_amount) || 6000,
-    daily_limit: Number(daily_limit) || 500000,
-    max_payments_per_day: Number(max_payments_per_day) || 5,
-    payments_today: 0,
-    turnover_today: 0,
-    active: true,
-    reserved: false,
-    current_order_id: null
-  };
-
-  store.cards.push(card);
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Card created",
-    card
-  });
-});
-
-app.patch("/api/admin/cards/:id/toggle", (req, res) => {
-  const card = getCardById(req.params.id);
-
-  if (!card) {
-    return res.status(404).json({
-      success: false,
-      message: "Card not found"
-    });
-  }
-
-  card.active = !card.active;
-  saveStore();
-
-  res.json({
-    success: true,
-    card
-  });
-});
-
-/* TOPUPS */
-
-app.get("/api/admin/topups", (req, res) => {
-  res.json({
-    success: true,
-    count: store.topups.length,
-    topups: store.topups
-  });
-});
-
-app.post("/api/trader/:id/topups", (req, res) => {
-  const trader = getTraderById(req.params.id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  const { amount_usdt, txid, network = "TRC20" } = req.body || {};
-
-  if (!amount_usdt || !txid) {
-    return res.status(400).json({
-      success: false,
-      message: "amount_usdt and txid are required"
-    });
-  }
-
-  const topup = {
-    id: makeId("topup"),
-    trader_id: trader.id,
-    trader_name: trader.name,
-    amount_usdt: Number(amount_usdt),
-    txid,
-    network,
-    status: "pending",
-    created_at: nowIso(),
-    approved_at: null,
-    rejected_at: null
-  };
-
-  store.topups.unshift(topup);
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Topup request created",
-    wallet: CONFIG.usdt_wallet,
-    topup
-  });
-});
-
-app.patch("/api/admin/topups/:id/approve", (req, res) => {
-  const topup = store.topups.find(t => t.id === req.params.id);
-
-  if (!topup) {
-    return res.status(404).json({
-      success: false,
-      message: "Topup not found"
-    });
-  }
-
-  if (topup.status !== "pending") {
-    return res.status(400).json({
-      success: false,
-      message: `Topup already ${topup.status}`
-    });
-  }
-
-  const trader = getTraderById(topup.trader_id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  trader.available_usdt = round2(Number(trader.available_usdt || 0) + Number(topup.amount_usdt));
-  if (trader.available_usdt > CONFIG.min_trader_balance_usdt) {
-    trader.status = "online";
-    trader.freeze_reason = null;
-    trader.pause_reason = null;
-  }
-
-  topup.status = "approved";
-  topup.approved_at = nowIso();
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Topup approved",
-    trader,
-    topup
-  });
-});
-
-app.patch("/api/admin/topups/:id/reject", (req, res) => {
-  const topup = store.topups.find(t => t.id === req.params.id);
-
-  if (!topup) {
-    return res.status(404).json({
-      success: false,
-      message: "Topup not found"
-    });
-  }
-
-  topup.status = "rejected";
-  topup.rejected_at = nowIso();
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Topup rejected",
-    topup
-  });
-});
-
-
-/* WITHDRAWALS */
-
-app.get("/api/admin/withdrawals", (req, res) => {
-  res.json({
-    success: true,
-    count: store.withdrawals.length,
-    withdrawals: store.withdrawals
-  });
-});
-
-app.post("/api/trader/:id/withdrawals", (req, res) => {
-  const trader = getTraderById(req.params.id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  const { amount_usdt, wallet_address, network = "TRC20" } = req.body || {};
-  const amount = Number(amount_usdt || 0);
-
-  if (!amount || amount <= 0 || !wallet_address) {
-    return res.status(400).json({
-      success: false,
-      message: "amount_usdt and wallet_address are required"
-    });
-  }
-
-  if (amount > Number(trader.earned_usdt || 0)) {
-    return res.status(400).json({
-      success: false,
-      message: "Not enough earned balance"
-    });
-  }
-
-  trader.earned_usdt = round2(Number(trader.earned_usdt || 0) - amount);
-
-  const withdrawal = {
-    id: makeId("withdrawal"),
-    trader_id: trader.id,
-    trader_name: trader.name,
-    amount_usdt: amount,
-    wallet_address,
-    network,
-    status: "pending",
-    created_at: nowIso(),
-    approved_at: null,
-    rejected_at: null,
-    txid: null
-  };
-
-  store.withdrawals.unshift(withdrawal);
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Withdrawal request created",
-    trader,
-    withdrawal
-  });
-});
-
-app.patch("/api/admin/withdrawals/:id/approve", (req, res) => {
-  const withdrawal = store.withdrawals.find(w => w.id === req.params.id);
-
-  if (!withdrawal) {
-    return res.status(404).json({
-      success: false,
-      message: "Withdrawal not found"
-    });
-  }
-
-  if (withdrawal.status !== "pending") {
-    return res.status(400).json({
-      success: false,
-      message: `Withdrawal already ${withdrawal.status}`
-    });
-  }
-
-  const { txid = null } = req.body || {};
-  withdrawal.status = "approved";
-  withdrawal.approved_at = nowIso();
-  withdrawal.txid = txid;
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Withdrawal approved",
-    withdrawal
-  });
-});
-
-app.patch("/api/admin/withdrawals/:id/reject", (req, res) => {
-  const withdrawal = store.withdrawals.find(w => w.id === req.params.id);
-
-  if (!withdrawal) {
-    return res.status(404).json({
-      success: false,
-      message: "Withdrawal not found"
-    });
-  }
-
-  if (withdrawal.status !== "pending") {
-    return res.status(400).json({
-      success: false,
-      message: `Withdrawal already ${withdrawal.status}`
-    });
-  }
-
-  const trader = getTraderById(withdrawal.trader_id);
-  if (trader) {
-    trader.earned_usdt = round2(Number(trader.earned_usdt || 0) + Number(withdrawal.amount_usdt || 0));
-  }
-
-  withdrawal.status = "rejected";
-  withdrawal.rejected_at = nowIso();
-  saveStore();
-
-  res.json({
-    success: true,
-    message: "Withdrawal rejected and earned balance returned",
-    trader,
-    withdrawal
-  });
-});
-
-/* TRADER */
-
-app.get("/api/trader/:id/orders", (req, res) => {
-  expireOldOrders();
-
-  const trader = getTraderById(req.params.id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  const orders = store.orders
-    .filter(o => o.trader_id === trader.id)
-    .map(publicOrder);
-
-  res.json({
-    success: true,
-    count: orders.length,
-    orders
-  });
-});
-
-app.get("/api/trader/:id/cards", (req, res) => {
-  const trader = getTraderById(req.params.id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  const cards = store.cards.filter(c => c.trader_id === trader.id);
-
-  res.json({
-    success: true,
-    count: cards.length,
-    cards
-  });
-});
-
-app.get("/api/trader/:id/wallet", (req, res) => {
-  const trader = getTraderById(req.params.id);
-
-  if (!trader) {
-    return res.status(404).json({
-      success: false,
-      message: "Trader not found"
-    });
-  }
-
-  res.json({
-    success: true,
-    trader_id: trader.id,
-    available_usdt: trader.available_usdt,
-    reserved_usdt: trader.reserved_usdt,
-    earned_usdt: trader.earned_usdt,
-    min_balance_usdt: CONFIG.min_trader_balance_usdt,
-    usdt_rate_uah: CONFIG.usdt_rate_uah,
-    wallet: CONFIG.usdt_wallet
-  });
-});
-
-/* 404 */
-
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error_code: "NOT_FOUND",
-    message: "Route not found",
-    path: req.originalUrl
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`PayHub server vNext-2 running on port ${PORT}`);
 });
