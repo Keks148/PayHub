@@ -722,3 +722,280 @@ function renderOrders(orders){
     </div>
   `).join("");
 }
+function renderTraders(traders){
+  if(!traders.length){
+    $("tradersBox").innerHTML = `<div class="item">Трейдеров пока нет</div>`;
+    return;
+  }
+
+  $("tradersBox").innerHTML = traders.map(t => `
+    <div class="item">
+      <div class="item-top">
+        <div class="item-title">${safe(t.name)}</div>
+        <div class="badge ${safe(t.status)}">${safe(t.status)}</div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info"><small>ID</small><strong>${safe(t.id)}</strong></div>
+        <div class="info"><small>Баланс</small><strong>${safe(t.available_usdt)} USDT</strong></div>
+        <div class="info"><small>Резерв</small><strong>${safe(t.reserved_usdt)} USDT</strong></div>
+        <div class="info"><small>Заработано</small><strong>${safe(t.earned_usdt)} USDT</strong></div>
+        <div class="info"><small>Активные заявки</small><strong>${safe(t.active_orders)} / ${safe(t.max_active_orders)}</strong></div>
+        <div class="info"><small>Приоритет</small><strong>${safe(t.priority)}</strong></div>
+      </div>
+
+      <div class="buttons">
+        <button class="btn-green" onclick="setTraderStatus('${safe(t.id)}','online')">🟢 Online</button>
+        <button class="btn-orange" onclick="setTraderStatus('${safe(t.id)}','pause')">🟡 Pause</button>
+        <button class="btn-gray" onclick="setTraderStatus('${safe(t.id)}','offline')">⚫ Offline</button>
+        <button class="btn-blue" onclick="editTrader('${safe(t.id)}')">⚙️ Edit</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderCards(cards){
+  if(!cards.length){
+    $("cardsBox").innerHTML = `<div class="item">Карт пока нет</div>`;
+    return;
+  }
+
+  $("cardsBox").innerHTML = cards.map(c => `
+    <div class="item">
+      <div class="item-top">
+        <div class="item-title">${safe(c.bank)}</div>
+        <div class="badge ${c.active ? "online" : "offline"}">
+          ${c.active ? "active" : "disabled"}
+        </div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info"><small>ID</small><strong>${safe(c.id)}</strong></div>
+        <div class="info"><small>Трейдер</small><strong>${safe(c.trader_id)}</strong></div>
+        <div class="info"><small>Карта</small><strong>${safe(c.card_number)}</strong></div>
+        <div class="info"><small>Владелец</small><strong>${safe(c.card_holder)}</strong></div>
+        <div class="info"><small>Мин / Макс</small><strong>${safe(c.min_amount)} - ${safe(c.max_amount)}</strong></div>
+        <div class="info"><small>День</small><strong>${safe(c.turnover_today)} / ${safe(c.daily_limit)}</strong></div>
+        <div class="info"><small>Платежи</small><strong>${safe(c.payments_today)} / ${safe(c.max_payments_per_day)}</strong></div>
+        <div class="info"><small>Занята</small><strong>${c.reserved ? "Да" : "Нет"}</strong></div>
+      </div>
+
+      <div class="buttons">
+        <button class="btn-blue" onclick="resetCardDay('${safe(c.id)}')">🔄 Сбросить день</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderEvents(events){
+  if(!events.length){
+    $("eventsBox").innerHTML = `<div class="item">Журнал пустой</div>`;
+    return;
+  }
+
+  $("eventsBox").innerHTML = events.map(e => `
+    <div class="event">
+      <div class="dot"></div>
+      <div class="event-text">
+        <div class="event-title">${safe(e.message)}</div>
+        <div class="event-time">${safe(e.created_at)} • ${safe(e.type)}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function refreshAll(){
+  try{
+    const [stats, orders, traders, cards, events] = await Promise.all([
+      api("/api/admin/stats"),
+      api("/api/admin/orders"),
+      api("/api/admin/traders"),
+      api("/api/admin/cards"),
+      api("/api/admin/events")
+    ]);
+
+    renderStats(stats.stats || {});
+    renderOrders(orders.orders || []);
+    renderTraders(traders.traders || []);
+    renderCards(cards.cards || []);
+    renderEvents(events.events || []);
+
+    out({
+      success:true,
+      message:"PayHub Admin обновлен",
+      time:new Date().toLocaleString()
+    });
+
+  }catch(e){
+    out({
+      success:false,
+      error:e.message
+    });
+  }
+}
+
+async function createTestOrder(){
+  const amount = prompt("Сумма заявки UAH", "4200");
+  if(!amount) return;
+
+  try{
+    const data = await api("/api/merchant/create-payment", "POST", {
+      amount_uah:Number(amount)
+    });
+
+    out(data);
+    refreshAll();
+
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function createTrader(){
+  const name = prompt("Имя трейдера", "Trader_2");
+  if(!name) return;
+
+  const balance = prompt("Баланс USDT", "500");
+  if(balance === null) return;
+
+  const percent = prompt("Процент трейдера", "4.5");
+  if(percent === null) return;
+
+  try{
+    const data = await api("/api/admin/traders", "POST", {
+      name,
+      available_usdt:Number(balance),
+      percent:Number(percent),
+      status:"online",
+      priority:0,
+      max_active_orders:3
+    });
+
+    out(data);
+    refreshAll();
+
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function createCard(){
+  try{
+    const tradersData = await api("/api/admin/traders");
+    const traders = tradersData.traders || [];
+
+    if(!traders.length){
+      alert("Сначала создай трейдера");
+      return;
+    }
+
+    const traderId = prompt(
+      "ID трейдера:\n" + traders.map(t => `${t.id} — ${t.name}`).join("\n"),
+      traders[0].id
+    );
+
+    if(!traderId) return;
+
+    const bank = prompt("Банк", "Monobank");
+    if(!bank) return;
+
+    const card_number = prompt("Номер карты", "5375410000009999");
+    if(!card_number) return;
+
+    const card_holder = prompt("Владелец карты", "PAYHUB CARD");
+    if(!card_holder) return;
+
+    const data = await api(`/api/trader/${traderId}/cards`, "POST", {
+      bank,
+      card_number,
+      card_holder,
+      min_amount:1000,
+      max_amount:6000,
+      daily_limit:500000,
+      max_payments_per_day:5
+    });
+
+    out(data);
+    refreshAll();
+
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function setTraderStatus(id,status){
+  try{
+    const data = await api(`/api/trader/${id}/status`, "POST", {status});
+    out(data);
+    refreshAll();
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function editTrader(id){
+  const balance = prompt("Новый баланс USDT. Пусто = не менять", "");
+  const priority = prompt("Приоритет. Чем больше, тем выше. Пусто = не менять", "");
+  const max = prompt("Макс активных заявок. Пусто = не менять", "");
+
+  const body = {};
+
+  if(balance !== "") body.available_usdt = Number(balance);
+  if(priority !== "") body.priority = Number(priority);
+  if(max !== "") body.max_active_orders = Number(max);
+
+  try{
+    const data = await api(`/api/admin/traders/${id}`, "PATCH", body);
+    out(data);
+    refreshAll();
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function confirmOrder(traderId, orderId){
+  if(!confirm("Подтвердить оплату?")) return;
+
+  try{
+    const data = await api(`/api/trader/${traderId}/orders/${orderId}/confirm`, "POST", {});
+    out(data);
+    refreshAll();
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function rejectOrder(traderId, orderId){
+  if(!confirm("Отклонить заявку?")) return;
+
+  try{
+    const data = await api(`/api/trader/${traderId}/orders/${orderId}/reject`, "POST", {
+      reason:"Rejected by admin"
+    });
+
+    out(data);
+    refreshAll();
+
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+async function resetCardDay(cardId){
+  if(!confirm("Сбросить дневные лимиты карты?")) return;
+
+  try{
+    const data = await api(`/api/admin/cards/${cardId}/reset-day`, "POST", {});
+    out(data);
+    refreshAll();
+  }catch(e){
+    out({success:false,error:e.message});
+  }
+}
+
+refreshAll();
+setInterval(refreshAll, 8000);
+</script>
+
+</body>
+</html>
